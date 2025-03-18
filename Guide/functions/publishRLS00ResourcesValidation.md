@@ -1,18 +1,22 @@
 # Publish Permissions to RLS - Step 0: Resources Validation
+
+This is the _Step_0_ of the hook [`publishQSRLSPermissions`](/Guide/hooks/publishQSRLSPermissions.md), called when publishing Permissions as RLS to QuickSight.
+
 This Lambda function will verify that the following resources have been created (and not removed by other users) in a specific _Region_:
 * S3 Bucket to store RLS CSV files
 * Glue Database that reads from S3 Bucket
 * QuickSight DataSource used to create the RLS DataSets.
 
 **Lambda Details**
-* [*Source Code*](/amplify/functions/publishRLS00ResourcesValidation/handler.ts)
+* [*Handler*](/amplify/functions/publishRLS00ResourcesValidation/handler.ts)
+* [*Resources*](/amplify/functions/publishRLS00ResourcesValidation/resources.ts)
 * [*Lambda Resource definition*](/amplify/data/resource.ts)
 * Lambda Timeout: 120 s
 
 ## Input
 | Name | Description | Type | Required | Variable |
 | -------- | ---- | ----------- | ---- | ---- |
-| accountId | AWS Account ID where the Tool is running | string | yes | env |
+| accountId | | string | yes | env |
 | region | | string | yes | arg |
 | s3BucketName | | string | yes | arg |
 | glueDatabaseName | | string | yes | arg |

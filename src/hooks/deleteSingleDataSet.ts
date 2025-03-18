@@ -214,7 +214,6 @@ export const deleteSingleDataSet = async({
   setStep("step4", StepStatus.LOADING)
   try{
     addLog("Deleting RLS DataSet from RLS Tool: " + rlsDataSetArn)
-    // arn:aws:quicksight:eu-central-1:418295695470:dataset/RLS-a380e69c-ee6a-45f9-851f-1bc2f05c4341
     const {data: describeRLSDataSet, errors} = await client.models.DataSet.get({ 
       dataSetArn: `arn:aws:quicksight:${region}:${accountId}:dataset/${rlsDataSetArn}` 
     })

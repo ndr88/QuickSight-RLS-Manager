@@ -270,29 +270,6 @@ const schema = a.schema({
     /**
      * Publish
      */
-    /*
-  publishRLStoQuickSight: a
-    .query()
-    .arguments({
-      datasetRegion: a.string().required(),
-      dataSetId: a.string().required(),
-      csvContent: a.string().required(),
-      csvHeaders: a.string().array().required(),
-      s3Bucket: a.string().required(),
-      glueDb: a.string().required(),
-      qsDataSource: a.string().required(),
-      rlsToolManaged: a.boolean().required(),
-      rlsDataSetId: a.string(),
-    })    
-    .returns(a.customType({
-      statusCode: a.integer().required(),
-      message: a.string().required(),
-      rlsDataSetArn: a.string(),
-      errorName: a.string(),
-    }))
-    .authorization((allow) => [allow.authenticated()])
-    .handler(a.handler.function(publishRLStoQuickSight)),*/
-
   publishRLS00ResourcesValidation: a
     .query()
     .arguments({

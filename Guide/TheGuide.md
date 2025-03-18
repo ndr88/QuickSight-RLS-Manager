@@ -15,8 +15,8 @@ The solution include the creation of some support resources, so I've developed e
 
 ## Core Concepts
 In all the Guide and the Tool itself you will find mainly two main resources that are fundamental and that have not to be confused:
-* DataSet to be Secured, or Main DataSet...: this is the DataSet that we want to protect with RLS
-* RLS DataSet: this is the DataSet that contains the RLS information that we'll apply to the DataSet to be Secured.
+* **DataSet to be Secured**, or **Main DataSet**...: this is the DataSet that we want to protect with RLS
+* **RLS DataSet**: this is the DataSet that contains the RLS information that we'll apply to the DataSet to be Secured.
 
 ## Architecture
 Amplify will generate some resources for you. 
@@ -26,6 +26,7 @@ The solution uses these services:
 * [AWS Glue](https://aws.amazon.com/glue/)
 * [Amazon Athena](https://aws.amazon.com/athena/)
 * [AWS Lambda](https://aws.amazon.com/lambda/?nc1=h_ls)
+* [Amazon Cognito](https://aws.amazon.com/it/cognito/)
 
 See the details in [RLS Manager Resources](Amplify-Resources.md).
 
