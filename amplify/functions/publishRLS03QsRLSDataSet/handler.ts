@@ -95,7 +95,13 @@ export const handler: Schema["publishRLS03QsRLSDataSet"]["functionHandler"] = as
             }))
           }
         }
-      }
+      },
+      Tags: [
+       {
+        Key: "RLS-Manager",
+        Value: "True"
+       }
+      ]
     }
 
     let create = false // True = Create, False = Update
