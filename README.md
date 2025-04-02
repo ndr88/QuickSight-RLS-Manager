@@ -10,6 +10,8 @@ Please refer to **andrepgn** for any hint, bug, or improvement idea.
 * [Guide](#guide)
     * [Quick Start](#quick-start)
 
+:warning: Code is not yet optimized, there are some features I want to add, and the documentation is not complete yet. Work in progress!
+
 ## The Idea
 
 A lot of customers, when working with Row Level Security, find it's difficult to keep it updated and quickly understand who-can-see-what.
@@ -82,4 +84,4 @@ A step-by-step guide is available here: [read the Guide](/Guide/TheGuide.md)
 ### Quick Start
 * [Deploy the QuickSight RLS Manager](/Guide/Install.md)
 * [Init the QuickSight RLS Manager](/Guide/Initialization.md)
-
+* [Manage Permissions](/Guide/Manage-Permissions.md)
