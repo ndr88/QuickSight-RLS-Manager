@@ -75,7 +75,7 @@ There is a part of resources (_RLS Manager base services_) which is deployed whe
 
 Then the other resources will depend of the choices you made.
 
-![Architecture](Guide/images/RLS-Tool-Architecture.jpg)
+![Architecture](Guide/images/RLS-Tool-Architecture.png)
 
 ## Guide
 
