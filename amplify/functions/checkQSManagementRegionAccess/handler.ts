@@ -1,68 +1,52 @@
 import type { Schema } from "../../data/resource";
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
 import { env } from '$amplify/env/checkQSManagementRegionAccess';
-import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
+import { ListUsersCommand } from "@aws-sdk/client-quicksight";
 
-import { QuickSightClient, ListUsersCommand } from "@aws-sdk/client-quicksight";
+import { initializeAmplify } from '../_shared/utils/amplify-config';
+import { createLogger } from '../_shared/utils/logger';
+import { validateRequired } from '../_shared/utils/validation';
+import { successResponse } from '../_shared/utils/response';
+import { handleError } from '../_shared/errors/error-handler';
+import { getQuickSightClient } from '../_shared/clients/quicksight';
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
- 
-Amplify.configure(resourceConfig, libraryOptions);
-
-// Initialize the Amplify Data client
-const client = generateClient<Schema>();
+const FUNCTION_NAME = 'checkQSManagementRegionAccess';
 
 export const handler: Schema["checkQSManagementRegionAccess"]["functionHandler"] = async ( event ) => {
+  const logger = createLogger(FUNCTION_NAME);
+  
+  try {
+    await initializeAmplify(env);
+    logger.info('Starting QuickSight Management Region access check');
 
-  console.log("Start checking QS Management Region access")
+    // Validate required variables
+    validateRequired(env.ACCOUNT_ID, 'ACCOUNT_ID');
+    validateRequired(event.arguments.qsManagementRegion, 'qsManagementRegion');
 
-  try {  
-    // Check Environment Variables
-    const accountId = env.ACCOUNT_ID || null
+    const accountId = env.ACCOUNT_ID;
+    const region = event.arguments.qsManagementRegion;
 
-    // If Environment Variables have failed to load, or in the QuickSight Management Region is missing, then throw an Error
-    if( ! accountId ){
-      throw new Error("Missing environment variables")
-    }
-    
-    // Initialize the QuickSight client
-    const quicksightClient = new QuickSightClient({ region:  event.arguments.qsManagementRegion });
+    // Get QuickSight client
+    const quicksightClient = getQuickSightClient(region);
 
-    // Create the ListUsers command
+    // Create and execute the ListUsers command
     const command = new ListUsersCommand({
       AwsAccountId: accountId,
       MaxResults: parseInt(env.API_MAX_RESULTS),
       Namespace: 'default',
     });
 
-    // Execute the command
     const response = await quicksightClient.send(command);
-    console.log( "Processing response" )
-    console.log( response )
+    logger.debug('Received response from QuickSight', { status: response.Status });
 
-    if( response.Status === 200){
-      return {
-        statusCode: 200,
-        message: 'QuickSight Management Region: VERIFIED.',
-      };
-    } else{
-      console.log("Error processing response: ", response)
-      throw new Error("Error processing response. Try again.")
+    if (response.Status === 200) {
+      logger.info('QuickSight Management Region verified successfully');
+      return successResponse('QuickSight Management Region: VERIFIED.');
+    } else {
+      logger.error('Unexpected response status', { status: response.Status });
+      throw new Error('Error processing response. Try again.');
     }
 
-  } catch (error: any) {
-    const err = (error as Error)
-    const statusCode = error?.$metadata?.httpStatusCode || 500;
-
-    console.error('Fail to validate QuickSight Management Region. [' + statusCode + "]: " + err.message);
-    console.error(err.stack)
-
-    return {
-      statusCode: statusCode,
-      message: 'Fail to validate QuickSight Management Region',
-      errorMessage: err.message,
-      errorName: err.name
-    };
+  } catch (error) {
+    return handleError(error, FUNCTION_NAME, 'Failed to validate QuickSight Management Region');
   }
 };

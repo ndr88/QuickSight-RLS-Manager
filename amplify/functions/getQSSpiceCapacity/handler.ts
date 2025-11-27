@@ -1,49 +1,43 @@
 import { 
   CloudWatch, 
-  GetMetricDataCommand, 
-  GetMetricDataCommandInput,
+  GetMetricDataCommand,
   StandardUnit 
 } from '@aws-sdk/client-cloudwatch';
 import type { Schema } from "../../data/resource";
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
 import { env } from '$amplify/env/getQSSpiceCapacity';
-import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
- 
-Amplify.configure(resourceConfig, libraryOptions);
+import { initializeAmplify } from '../_shared/utils/amplify-config';
+import { createLogger } from '../_shared/utils/logger';
+import { validateRequired } from '../_shared/utils/validation';
 
-
-interface MetricResponse {
-  Timestamps: Date[];
-  Values: number[];
-}
+const FUNCTION_NAME = 'getQSSpiceCapacity';
 
 export const handler: Schema["getQSSpiceCapacity"]["functionHandler"] = async ( event ) => {
+  const logger = createLogger(FUNCTION_NAME);
+  
+  try {
+    await initializeAmplify(env);
+    
+    validateRequired(env.ACCOUNT_ID, 'ACCOUNT_ID');
+    validateRequired(event.arguments.region, 'region');
 
-  // Check Environment Variables
-  const accountId = env.ACCOUNT_ID || null
+    const accountId = env.ACCOUNT_ID;
+    const region = event.arguments.region;
 
-  // If Environment Variables have failed to load, or in the QuickSight Management Region is missing, then throw an Error
-  if( ! accountId  ){
-    throw new Error("Missing environment variables")
-  }
+    logger.info('Fetching QuickSight SPICE Capacity', { region });
 
-  // Check arguments:
-  // qsRegion
-  try{
-    const cloudwatchClient = new CloudWatch({ region: event.arguments.region });
+    const cloudwatchClient = new CloudWatch({ region });
     
     const endtime = new Date();
     const starttime = new Date(endtime.getTime() - (1000 * 24 * 60 * 60 * 1000)); // 10 days
 
-    const inputLimit = { // GetMetricDataInput
-      MetricDataQueries: [ // MetricDataQueries // required
-        { // MetricDataQuery
-          Id: "cloudwatch", // required
-          MetricStat: { // MetricStat
-            Metric: { // Metric
+    // Get SPICE Capacity Limit
+    const inputLimit = {
+      MetricDataQueries: [
+        {
+          Id: "cloudwatch",
+          MetricStat: {
+            Metric: {
               Namespace: 'AWS/QuickSight',
               MetricName: "SPICECapacityLimitInMB",
             },
@@ -56,28 +50,26 @@ export const handler: Schema["getQSSpiceCapacity"]["functionHandler"] = async ( 
           AccountId: accountId,
         },
       ],
-      StartTime: starttime, // required
-      EndTime: endtime, // required
+      StartTime: starttime,
+      EndTime: endtime,
     };
 
-    const getLimit = new GetMetricDataCommand( inputLimit );
-    const response_limit = await cloudwatchClient.send(getLimit);
+    const getLimitCommand = new GetMetricDataCommand(inputLimit);
+    const responseLimit = await cloudwatchClient.send(getLimitCommand);
 
-    if( response_limit.MetricDataResults === undefined || response_limit.MetricDataResults.length === 0
-    || response_limit.MetricDataResults[0].StatusCode !== "Complete"|| response_limit.MetricDataResults[0].Values === undefined
-    || response_limit.MetricDataResults[0].Values.length === 0 ){
-      throw new Error("Error processing response.")
+    if (!responseLimit.MetricDataResults?.[0]?.Values?.[0]) {
+      throw new Error('No SPICE limit data available');
     }
     
-    let qsLimitInMB = response_limit.MetricDataResults?.[0]?.Values?.[0]
+    const qsLimitInMB = responseLimit.MetricDataResults[0].Values[0];
 
-
-    const inputUser = { // GetMetricDataInput
-      MetricDataQueries: [ // MetricDataQueries // required
-        { // MetricDataQuery
-          Id: "cloudwatch", // required
-          MetricStat: { // MetricStat
-            Metric: { // Metric
+    // Get SPICE Capacity Used
+    const inputUsed = {
+      MetricDataQueries: [
+        {
+          Id: "cloudwatch",
+          MetricStat: {
+            Metric: {
               Namespace: 'AWS/QuickSight',
               MetricName: "SPICECapacityConsumedInMB",
             },
@@ -90,35 +82,39 @@ export const handler: Schema["getQSSpiceCapacity"]["functionHandler"] = async ( 
           AccountId: accountId,
         },
       ],
-      StartTime: starttime, // required
-      EndTime: endtime, // required
+      StartTime: starttime,
+      EndTime: endtime,
     };
 
-    const getUsed = new GetMetricDataCommand( inputUser );
-    const response_used = await cloudwatchClient.send(getUsed);
+    const getUsedCommand = new GetMetricDataCommand(inputUsed);
+    const responseUsed = await cloudwatchClient.send(getUsedCommand);
 
-    if( response_used.MetricDataResults === undefined || response_used.MetricDataResults.length === 0
-    || response_used.MetricDataResults[0].StatusCode !== "Complete"|| response_used.MetricDataResults[0].Values === undefined
-    || response_used.MetricDataResults[0].Values.length === 0 ){
-      throw new Error("Error processing response.")
+    if (!responseUsed.MetricDataResults?.[0]?.Values?.[0]) {
+      throw new Error('No SPICE usage data available');
     }
     
-    let qsUsedInMB = response_used.MetricDataResults?.[0]?.Values?.[0]
+    const qsUsedInMB = responseUsed.MetricDataResults[0].Values[0];
+
+    logger.info('SPICE Capacity retrieved successfully', { 
+      limitMB: qsLimitInMB, 
+      usedMB: qsUsedInMB 
+    });
 
     return {
       statusCode: 200,
       message: "QuickSight SPICE Capacity successfully retrieved.",
       availableCapacityInGB: Number((qsLimitInMB / 1024).toFixed(2)),
       usedCapacityInGB: Number((qsUsedInMB / 1024).toFixed(2)),
-    }
+    };
 
-  }catch(err){
+  } catch (error) {
+    logger.error('Failed to fetch SPICE Capacity', error);
     return {
       statusCode: 500,
       message: "Error fetching QuickSight SPICE Capacity.",
       availableCapacityInGB: 0,
       usedCapacityInGB: 0,
-      errorName: "QSSPICE"
-    }
+      errorName: error instanceof Error ? error.name : 'QSSPICE'
+    };
   }
 };

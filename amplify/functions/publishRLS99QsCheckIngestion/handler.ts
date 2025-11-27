@@ -1,88 +1,77 @@
 import type { Schema } from "../../data/resource"
-import { DescribeIngestionCommand, QuickSightClient } from "@aws-sdk/client-quicksight";
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
-import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
-
-
+import { DescribeIngestionCommand } from "@aws-sdk/client-quicksight";
 import { env } from '$amplify/env/publishRLS99QsCheckIngestion';
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
- 
-Amplify.configure(resourceConfig, libraryOptions);
+import { initializeAmplify } from '../_shared/utils/amplify-config';
+import { createLogger } from '../_shared/utils/logger';
+import { validateRequired } from '../_shared/utils/validation';
+import { getQuickSightClient } from '../_shared/clients/quicksight';
 
-// Initialize the Amplify Data client
-const client = generateClient<Schema>();
+const FUNCTION_NAME = 'publishRLS99QsCheckIngestion';
 
-/**
- * Publich data to QuickSight with new DataSet Creation
- */
 export const handler: Schema["publishRLS99QsCheckIngestion"]["functionHandler"] = async ( event ) => {
+  const logger = createLogger(FUNCTION_NAME);
+  
+  try {
+    await initializeAmplify(env);
+    
+    validateRequired(env.ACCOUNT_ID, 'ACCOUNT_ID');
+    validateRequired(event.arguments.dataSetId, 'dataSetId');
+    validateRequired(event.arguments.datasetRegion, 'datasetRegion');
+    validateRequired(event.arguments.ingestionId, 'ingestionId');
 
-  // console.log(`Start publishing RLS to QuickSight. Arguments: ${JSON.stringify(event.arguments)}`)
+    const accountId = env.ACCOUNT_ID;
+    const dataSetId = event.arguments.dataSetId;
+    const region = event.arguments.datasetRegion;
+    const ingestionId = event.arguments.ingestionId;
 
-  const accountId = env.ACCOUNT_ID || null
+    logger.info('Checking ingestion status', { dataSetId, ingestionId });
 
-  const dataSetId = event.arguments.dataSetId
-  const region = event.arguments.datasetRegion
-  const ingestionId = event.arguments.ingestionId
-
-  /**
-   * Validating Arguments and Variables
-   */
-  console.log("Validating arguments and variables.")
-  if( ! accountId ){
-    throw new Error("Missing environment variables")
-  }
-
-  /**
-   * QuickSight
-   */
-  try{
-
-    const quicksightClient = new QuickSightClient({ region: region });
+    const quicksightClient = getQuickSightClient(region);
 
     const ingestionCommand = new DescribeIngestionCommand({
       AwsAccountId: accountId,
       DataSetId: dataSetId,
       IngestionId: ingestionId
-    })
+    });
   
-    const ingestionResponse = await quicksightClient.send(ingestionCommand)
-  
-    if(ingestionResponse && ingestionResponse.Ingestion?.IngestionStatus === "COMPLETED"){
-      console.log( "RLS DataSet Correctly Created / Updated." )
+    const ingestionResponse = await quicksightClient.send(ingestionCommand);
+    const ingestionStatus = ingestionResponse.Ingestion?.IngestionStatus;
+
+    logger.debug('Ingestion status', { status: ingestionStatus });
+
+    if (ingestionStatus === "COMPLETED") {
+      logger.info('RLS DataSet ingestion completed successfully');
       return {
         statusCode: 200,
         message: "RLS DataSet Correctly Created / Updated.",
-      }
-    }else if (ingestionResponse && (ingestionResponse.Ingestion?.IngestionStatus === "FAILED" || ingestionResponse.Ingestion?.IngestionStatus === "CANCELLED")){
-      console.log(ingestionResponse)
+      };
+    } else if (ingestionStatus === "FAILED" || ingestionStatus === "CANCELLED") {
+      logger.error('Ingestion failed', { 
+        status: ingestionStatus,
+        errorInfo: ingestionResponse.Ingestion?.ErrorInfo 
+      });
       return {
         statusCode: 500,
-        message: "Error" + ingestionResponse.Ingestion?.ErrorInfo?.Message,
-        errorType: "QuickSightIngestion_" + ingestionResponse.Ingestion?.IngestionStatus + "_" + ingestionResponse.Ingestion?.ErrorInfo?.Type,
-      }
-    }else if(ingestionResponse && ( ingestionResponse.Ingestion?.IngestionStatus === "QUEUED" || ingestionResponse.Ingestion?.IngestionStatus === "INITIALIZED" || ingestionResponse.Ingestion?.IngestionStatus === "RUNNING")){ 
-      console.log("Still creating dataset...")
+        message: "Error: " + ingestionResponse.Ingestion?.ErrorInfo?.Message,
+        errorType: `QuickSightIngestion_${ingestionStatus}_${ingestionResponse.Ingestion?.ErrorInfo?.Type}`,
+      };
+    } else if (ingestionStatus === "QUEUED" || ingestionStatus === "INITIALIZED" || ingestionStatus === "RUNNING") { 
+      logger.debug('Ingestion still in progress', { status: ingestionStatus });
       return {
         statusCode: 201,
         message: "Still creating dataset...",
-      }
+      };
     } else {
-      throw new Error("Unknown Error")
+      throw new Error("Unknown ingestion status");
     }
 
-
-  }catch(err){
-    const error = err as Error
-    console.log(error)
-
+  } catch (error) {
+    logger.error('Failed to check ingestion status', error);
     return {
       statusCode: 500,
-      message: "Error creating or Updating QuickSight DataSet. " + error.message,
-      errorType: error.name
-    }
-
+      message: "Error checking QuickSight DataSet ingestion",
+      errorType: error instanceof Error ? error.name : 'UnknownError'
+    };
   }
-}
+};
