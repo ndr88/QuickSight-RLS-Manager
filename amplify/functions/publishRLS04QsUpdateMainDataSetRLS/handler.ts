@@ -1,161 +1,75 @@
 import type { Schema } from "../../data/resource"
-import { DescribeDataSetCommand, QuickSightClient, UpdateDataSetCommand } from "@aws-sdk/client-quicksight";
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
-import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
-
+import { DescribeDataSetCommand, UpdateDataSetCommand } from "@aws-sdk/client-quicksight";
 import { env } from '$amplify/env/publishRLS04QsUpdateMainDataSetRLS';
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
- 
-Amplify.configure(resourceConfig, libraryOptions);
+import { initializeAmplify } from '../_shared/utils/amplify-config';
+import { createLogger } from '../_shared/utils/logger';
+import { validateRequired } from '../_shared/utils/validation';
+import { getQuickSightClient } from '../_shared/clients/quicksight';
 
-// Initialize the Amplify Data client
-const client = generateClient<Schema>();
+const FUNCTION_NAME = 'publishRLS04QsUpdateMainDataSetRLS';
 
-/**
- * Publich data to QuickSight with new DataSet Creation
- */
 export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHandler"] = async ( event ) => {
-
-  // console.log(`Start publishing RLS to QuickSight. Arguments: ${JSON.stringify(event.arguments)}`)
-
-  const accountId = env.ACCOUNT_ID || null
-
-  const dataSetId = event.arguments.dataSetId
-  const region = event.arguments.region
-  const rlsDataSetArn = event.arguments.rlsDataSetArn
-
-  /** 
-   * Validating Arguments and Variables
-   */
-  console.info("Validating arguments and environment variables.")
+  const logger = createLogger(FUNCTION_NAME);
   
   try {
-    if( ! accountId ){ throw new ReferenceError("Missing 'accountId' variable.") }
-    if( ! region ){ throw new ReferenceError("Missing 'region' argument.") }
-    if( ! dataSetId ){ throw new ReferenceError("Missing 'dataSetId' argument.") }
-    if( ! rlsDataSetArn ){ throw new ReferenceError("Missing 'rlsDataSetArn' argument.") }
-  }catch(e){
-    if( e instanceof ReferenceError ){
-      console.error(e.name + ": " + e.message)
-      return {
-        statusCode: 400,
-        message: e.name + ": " + e.message,
-        errorType: e.name
-      }
+    await initializeAmplify(env);
     
-    }else{
-      console.error(e)
-      return {
-        statusCode: 500,
-        message: "Unknown Error. Please check the logs.",
-        errorType: "UnknownError"
-      }
-    }
-  }
+    validateRequired(env.ACCOUNT_ID, 'ACCOUNT_ID');
+    validateRequired(event.arguments.region, 'region');
+    validateRequired(event.arguments.dataSetId, 'dataSetId');
+    validateRequired(event.arguments.rlsDataSetArn, 'rlsDataSetArn');
 
-  /**
-   * QuickSight
-   */
+    const accountId = env.ACCOUNT_ID;
+    const dataSetId = event.arguments.dataSetId;
+    const region = event.arguments.region;
+    const rlsDataSetArn = event.arguments.rlsDataSetArn;
 
-  const quicksightClient = new QuickSightClient({ region: region });
+    logger.info('Updating RLS of DataSet', { dataSetId, rlsDataSetArn });
 
-  let ingestionId = "" 
-
-  console.log(`Updating RLS of DataSet ${dataSetId} with RLS DataSet ${rlsDataSetArn}`)
-
-  try{
+    const quicksightClient = getQuickSightClient(region);
 
     // Get the dataset to be modified
     const getDataSetInfoCommand = new DescribeDataSetCommand({
-      AwsAccountId: accountId, // Get this from environment variable
-      DataSetId: dataSetId, // Adjust based on your needs
-    })
+      AwsAccountId: accountId,
+      DataSetId: dataSetId,
+    });
 
-    const dataSetInfoResponse = await quicksightClient.send(getDataSetInfoCommand)
+    const dataSetInfoResponse = await quicksightClient.send(getDataSetInfoCommand);
 
-    if (dataSetInfoResponse && dataSetInfoResponse.Status === 200 && dataSetInfoResponse.DataSet){
-      const dataSetToSecure = dataSetInfoResponse.DataSet
+    if (dataSetInfoResponse && dataSetInfoResponse.Status === 200 && dataSetInfoResponse.DataSet) {
+      const dataSetToSecure = dataSetInfoResponse.DataSet;
 
-      if(dataSetInfoResponse.DataSet.RowLevelPermissionDataSet?.Arn && dataSetInfoResponse.DataSet.RowLevelPermissionDataSet?.Arn == rlsDataSetArn ){
-        console.info("DataSet RLS is already set to " + rlsDataSetArn + ". Checking that RLS DataSet really exists.")
-        const rlsDataSetIdSplit = dataSetInfoResponse.DataSet.RowLevelPermissionDataSet.Arn.split("/")
-        const rlsDataSetIdExtracted = rlsDataSetIdSplit[rlsDataSetIdSplit.length - 1]
+      if (dataSetInfoResponse.DataSet.RowLevelPermissionDataSet?.Arn === rlsDataSetArn) {
+        logger.info('DataSet RLS already set to target ARN, verifying RLS DataSet exists');
+        
+        const rlsDataSetIdExtracted = rlsDataSetArn.split("/").pop();
 
         try {
           const getRLSDataSetInfoCommand = new DescribeDataSetCommand({
             AwsAccountId: accountId,
             DataSetId: rlsDataSetIdExtracted
-          })
+          });
 
-          const rlsDataSetInfoResponse = await quicksightClient.send(getRLSDataSetInfoCommand)
+          const rlsDataSetInfoResponse = await quicksightClient.send(getRLSDataSetInfoCommand);
 
-          if(rlsDataSetInfoResponse.Status == 200){
+          if (rlsDataSetInfoResponse.Status === 200) {
+            logger.info('RLS DataSet verified, already configured');
             return {
               statusCode: 200,
-              message: "DataSet RLS is already set to " + rlsDataSetArn + ". RLS Already set.",
+              message: "DataSet RLS already set. RLS Already configured.",
               ingestionId: ""
-            }
-          }else{
-            throw new Error("Failed to check RLS DataSet.")
+            };
           }
-        }catch(e){
-          if(e instanceof Error) {
-            const errorMessage = `[${e.name}] Creating or Updating RLS DataSet failed: ${e.message}`
-            let statusCode = 500
-            let errorType = e.name
-      
-            switch (e.name) {
-              case "ResourceNotFoundException": // THIS IS THE INTERESTING PART.
-                statusCode = 404
-                break
-              case "InvalidParameterValueException":
-                statusCode = 400
-                break
-              case "AccessDeniedException":
-                statusCode = 401
-                break
-              case "UnsupportedUserEditionException":
-                statusCode = 403
-              case "ConflictException":
-              case "LimitExceededException":
-              case "ResourceExistsException":
-                statusCode = 409
-                break
-              case "ThrottlingException":
-                statusCode = 429
-                break
-              case "InternalFailureException":
-                statusCode = 500
-                break
-              default:
-                statusCode = 500
-                errorType = "UnknownError"
-            }
-
-            if( statusCode == 404 ){
-              console.info("DataSet RLS is set to " + rlsDataSetArn + ", but this RLS DataSet does not exists in QuickSight. Proceeding to create a RLS DataSet.")
-            }else{
-              console.error("Failed to check if RLS DataSet assigned to DataSet to be Secured really exists.")
-              console.error(errorMessage)
-              return {
-                statusCode: statusCode,
-                errorType: errorType,
-                message: errorMessage,
-              }
-            }
-          } else {
-            return {
-              statusCode: 500,
-              errorType: "UnknownError",
-              message: "An unknown error occurred.",
-            }
+        } catch (e: any) {
+          if (e?.name !== "ResourceNotFoundException") {
+            throw e;
           }
+          logger.info('RLS DataSet not found, will update');
         }
-      }else{
-        console.info("DataSet RLS is not set to " + rlsDataSetArn + ". Updating DataSet to be Secured with the RLS DataSet.")
       }
+
+      logger.info('Updating DataSet with RLS configuration');
 
       const updateDataSetCommand = new UpdateDataSetCommand({
         AwsAccountId: accountId,
@@ -170,93 +84,40 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
           Status: "ENABLED",
           FormatVersion: "VERSION_2",
         }
-      })
+      });
 
-      const updateDataSetResponse = await quicksightClient.send(updateDataSetCommand)
+      const updateDataSetResponse = await quicksightClient.send(updateDataSetCommand);
 
-      if(updateDataSetResponse.$metadata.httpStatusCode != 200 && updateDataSetResponse.$metadata.httpStatusCode != 201){
-        console.error(updateDataSetResponse)
-        throw new Error("Error updating QuickSight DataSet to be Secured")
-      }else if(updateDataSetResponse.$metadata.httpStatusCode == 200){
-        console.info("QuickSight DataSet to be Secured updated successfully.")
+      if (updateDataSetResponse.$metadata.httpStatusCode === 200) {
+        logger.info('DataSet updated successfully');
         return {
           statusCode: 200,
           message: "QuickSight DataSet to be Secured updated successfully.",
+        };
+      } else if (updateDataSetResponse.$metadata.httpStatusCode === 201) {
+        const ingestionId = updateDataSetResponse.IngestionId;
+        if (!ingestionId) {
+          throw new Error("No IngestionId found");
         }
-      }else if(updateDataSetResponse.$metadata.httpStatusCode == 201){
-        if( ! updateDataSetResponse.IngestionId || updateDataSetResponse.IngestionId === "" || updateDataSetResponse.IngestionId == null ){
-          console.error("No IngestionId found.", "ERROR", 404, "QuickSightError")
-          throw new Error("No IngestionId found.")
-        }else{
-          console.info("QuickSight DataSet to be Secured updating in progress.")
-          ingestionId = updateDataSetResponse.IngestionId
-
-          console.debug("ingestionId: " + ingestionId)
-          console.debug(updateDataSetResponse)
-          
-          return {
-            statusCode: 201,
-            message: "QuickSight DataSet to be Secured updating in progress.",
-            ingestionId: ingestionId
-          }
-        }
+        logger.info('DataSet update in progress', { ingestionId });
+        return {
+          statusCode: 201,
+          message: "QuickSight DataSet to be Secured updating in progress.",
+          ingestionId: ingestionId
+        };
       }
-    }else{
-      console.error("Error getting DataSet to be Secured Info")
-      throw new Error("Error getting DataSet to be Secured Info")
-    }
 
-  }catch(e){
-
-    if(e instanceof Error) {
-      const errorMessage = `[${e.name}] Creating or Updating RLS DataSet failed: ${e.message}`
-      let statusCode = 500
-      let errorType = e.name
-
-      switch (e.name) {
-        case "InvalidParameterValueException":
-          statusCode = 400
-          break
-        case "AccessDeniedException":
-          statusCode = 401
-          break
-        case "UnsupportedUserEditionException":
-          statusCode = 403
-        case "ResourceNotFoundException":
-          statusCode = 404
-          break
-        case "ConflictException":
-        case "LimitExceededException":
-        case "ResourceExistsException":
-          statusCode = 409
-          break
-        case "ThrottlingException":
-          statusCode = 429
-          break
-        case "InternalFailureException":
-          statusCode = 500
-          break
-        default:
-          statusCode = 500
-          errorType = "UnknownError"
-      }
-      console.error(errorMessage)
-      return {
-        statusCode: statusCode,
-        errorType: errorType,
-        message: errorMessage,
-      }
+      throw new Error("Error updating QuickSight DataSet");
     } else {
-      return {
-        statusCode: 500,
-        errorType: "UnknownError",
-        message: "An unknown error occurred.",
-      }
+      throw new Error("Error getting DataSet to be Secured Info");
     }
-  }
 
-  return {
-    statusCode: 500,
-    message: "You shouldn't be here. Why are you here? Damn.",
+  } catch (error) {
+    logger.error('Failed to update DataSet RLS', error);
+    return {
+      statusCode: 500,
+      message: 'Failed to update DataSet RLS',
+      errorType: error instanceof Error ? error.name : 'UnknownError'
+    };
   }
-}
+};

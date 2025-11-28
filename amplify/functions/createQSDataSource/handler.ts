@@ -1,38 +1,34 @@
 import type { Schema } from "../../data/resource"
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
-import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
-import {v4 as uuidv4} from 'uuid';
-
 import { env } from '$amplify/env/createQSDataSource';
-import { CreateDataSourceCommand, DescribeDataSourceCommand, QuickSight } from "@aws-sdk/client-quicksight";
+import { v4 as uuidv4 } from 'uuid';
+import { CreateDataSourceCommand, DescribeDataSourceCommand } from "@aws-sdk/client-quicksight";
 
+import { initializeAmplify } from '../_shared/utils/amplify-config';
+import { createLogger } from '../_shared/utils/logger';
+import { validateRequired } from '../_shared/utils/validation';
+import { getQuickSightClient } from '../_shared/clients/quicksight';
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
- 
-Amplify.configure(resourceConfig, libraryOptions);
-
-// Initialize the Amplify Data client
-const client = generateClient<Schema>();
+const FUNCTION_NAME = 'createQSDataSource';
 
 export const handler: Schema["createQSDataSource"]["functionHandler"] = async ( event ) => {
-  const AWS_ACCOUNT = env.ACCOUNT_ID
-  const DATA_SOURCE_REGION = event.arguments.region
-
+  const logger = createLogger(FUNCTION_NAME);
+  
   try {
-
-    console.log("Creating QuickSight DataSource for region: " + DATA_SOURCE_REGION)
-
-    // create a randum uuid
-    let uuid = uuidv4();
-    const DATA_SOURCE_NAME = env.RESOURCE_PREFIX + uuid
-
-    console.log("QuickSight DataSource name: " + DATA_SOURCE_NAME)
-
+    await initializeAmplify(env);
     
-    let createDataSourceCommand = new CreateDataSourceCommand({
-      AwsAccountId: AWS_ACCOUNT,
-      DataSourceId: DATA_SOURCE_NAME,
+    validateRequired(env.ACCOUNT_ID, 'ACCOUNT_ID');
+    validateRequired(event.arguments.region, 'region');
+
+    const accountId = env.ACCOUNT_ID;
+    const region = event.arguments.region;
+    const uuid = uuidv4();
+    const dataSourceName = env.RESOURCE_PREFIX + uuid;
+
+    logger.info('Creating QuickSight DataSource', { region, dataSourceName });
+
+    const createDataSourceCommand = new CreateDataSourceCommand({
+      AwsAccountId: accountId,
+      DataSourceId: dataSourceName,
       Name: 'QS Managed Data Source from Athena',
       Type: 'ATHENA',
       DataSourceParameters: {
@@ -40,71 +36,53 @@ export const handler: Schema["createQSDataSource"]["functionHandler"] = async ( 
           WorkGroup: 'primary'
         }
       }
-    })
+    });
 
-    const quicksightClient = new QuickSight({ region: DATA_SOURCE_REGION });
+    const quicksightClient = getQuickSightClient(region);
+    const createResponse = await quicksightClient.send(createDataSourceCommand);
 
-    const createQsDataSourceResponse = await quicksightClient.send(createDataSourceCommand)
+    if (createResponse.$metadata.httpStatusCode === 202) {
+      logger.info('QuickSight DataSource creation in progress');
 
-    if( ( createQsDataSourceResponse).$metadata.httpStatusCode === 202){
-      console.log("QuickSight DataSource creation in progress.")
-
-      let creationInProgress = true
+      let creationInProgress = true;
 
       do {
-        const describeDataSourceCommand = new DescribeDataSourceCommand({
-          AwsAccountId: AWS_ACCOUNT,
-          DataSourceId: DATA_SOURCE_NAME
-        })
+        const describeCommand = new DescribeDataSourceCommand({
+          AwsAccountId: accountId,
+          DataSourceId: dataSourceName
+        });
 
-        const describeDataSourceResponse = await quicksightClient.send(describeDataSourceCommand)
+        const describeResponse = await quicksightClient.send(describeCommand);
+        logger.debug('DataSource status', { status: describeResponse.DataSource?.Status });
 
-        console.log(describeDataSourceResponse)
-
-        if( describeDataSourceResponse && describeDataSourceResponse.Status === 200 ){
-
-          if( describeDataSourceResponse.DataSource?.Status === "CREATION_IN_PROGRESS"){
-            creationInProgress = true
+        if (describeResponse && describeResponse.Status === 200) {
+          if (describeResponse.DataSource?.Status === "CREATION_IN_PROGRESS") {
             await new Promise(resolve => setTimeout(resolve, 1000));
-          }else if (describeDataSourceResponse.DataSource?.Status === "CREATION_SUCCESSFUL"){
-            creationInProgress = false
-            console.log("QuickSight DataSource created.")
-          }else{
-            creationInProgress = false
-            console.log("QuickSight DataSource creation failed.")
-            throw new Error("QuickSight DataSource creation failed.")
+          } else if (describeResponse.DataSource?.Status === "CREATION_SUCCESSFUL") {
+            creationInProgress = false;
+            logger.info('QuickSight DataSource created successfully');
+          } else {
+            throw new Error('QuickSight DataSource creation failed');
           }
-
         }
-
-      }while(creationInProgress)
-
+      } while (creationInProgress);
 
       return {
         statusCode: 200,
-        message: 'QuickSight DataSource ' + DATA_SOURCE_NAME + ' created in Region ' + DATA_SOURCE_REGION + '.',
-        qsDataSourceName: DATA_SOURCE_NAME
-      }
-    }else{
-      console.log("QuickSight DataSource not created")
-      console.log(createQsDataSourceResponse)
-      return {
-        statusCode: 500,
-        message: 'Failed to create the QuickSight DataSource in Region ' + DATA_SOURCE_REGION,
-        qsDataSourceName: "",
-        errorName: "QsDataSourceError"
-      }
+        message: `QuickSight DataSource ${dataSourceName} created in Region ${region}.`,
+        qsDataSourceName: dataSourceName
+      };
+    } else {
+      throw new Error('Failed to initiate QuickSight DataSource creation');
     }
-  } catch (err){
 
-
-    console.log(err)
-
+  } catch (error) {
+    logger.error('Failed to create QuickSight DataSource', error);
     return {
       statusCode: 500,
-      message: 'Failed to create the QuickSight DataSource in Region ' + DATA_SOURCE_REGION,
-      qsDataSourceName: "",
-      errorName: "QsDataSourceError"
-    } 
+      message: 'Failed to create QuickSight DataSource',
+      qsDataSourceName: '',
+      errorName: error instanceof Error ? error.name : 'UnknownError'
+    };
   }
 }
