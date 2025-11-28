@@ -95,6 +95,36 @@ backend.deleteDataSetFromQS.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 backend.deleteDataSetGlueTable.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 backend.deleteDataSetS3Objects.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 
+/** 
+ * ---- Log Level Variable ----
+ * Set logging level for all Lambda functions
+ * Valid values: DEBUG, INFO, WARN, ERROR
+ * Default: INFO
+ */
+const LOG_LEVEL = process.env.LOG_LEVEL || 'DEBUG';
+
+backend.setAccount.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.fetchNamespacesFromQS.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.fetchGroupsFromQS.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.fetchUsersFromQS.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.fetchDataSetsFromQS.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.fetchDataSetFieldsFromQS.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.getQSSpiceCapacity.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.createS3Bucket.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.createGlueDatabase.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.createQSDataSource.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.checkQSManagementRegionAccess.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.publishRLS00ResourcesValidation.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.publishRLS01S3.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.publishRLS02Glue.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.publishRLS03QsRLSDataSet.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.publishRLS99QsCheckIngestion.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.publishRLS04QsUpdateMainDataSetRLS.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.removeRLSDataSet.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.deleteDataSetFromQS.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.deleteDataSetGlueTable.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.deleteDataSetS3Objects.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+
 /**
  * ---- Lambda: publishRLS00ResourcesValidation
  */

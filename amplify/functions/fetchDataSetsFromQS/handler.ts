@@ -45,6 +45,18 @@ export const handler: Schema["fetchDataSetsFromQS"]["functionHandler"] = async (
 
     if (response.DataSetSummaries && response.Status === 200) {
       logger.info('Datasets fetched successfully', { count: response.DataSetSummaries.length });
+      
+      // Debug: Check if UseAs field is present in any dataset
+      const datasetsWithUseAs = response.DataSetSummaries.filter(ds => ds.UseAs);
+      if (datasetsWithUseAs.length > 0) {
+        logger.info('Found datasets with UseAs field', { 
+          count: datasetsWithUseAs.length,
+          examples: datasetsWithUseAs.map(ds => ({ id: ds.DataSetId, name: ds.Name, useAs: ds.UseAs }))
+        });
+      } else {
+        logger.warn('No datasets with UseAs field found - SDK may need update or no RLS datasets exist');
+      }
+      
       return {
         statusCode: 200,
         message: 'QuickSight Datasets fetched successfully',

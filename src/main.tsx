@@ -75,7 +75,8 @@ function MainLayout() {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <>
     {/*<GlobalStyle />*/}
-    <Authenticator hideSignUp>
+    {/*<Authenticator hideSignUp>*/}
+    <Authenticator>
       {({ signOut, user }) => (
         <Router>
           <div id="top-navigation-panel" role="navigation">
@@ -83,7 +84,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               identity={
                 {
                   href: "#",
-                  title: "Row Level Security Manager",
+                  title: "Kiro: Row Level Security Manager",
                   logo: {
                     src: "/src/assets/QS-RLS-Logo.png",
                     alt: "QS-RLS"

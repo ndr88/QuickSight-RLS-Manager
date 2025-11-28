@@ -29,3 +29,6 @@ amplify_outputs*
 amplifyconfiguration*
 src/pages/ManagePermissionsPage-v2.tsx
 src/pages/Homepage-v2.tsx
+
+# testing 
+.test-scripts

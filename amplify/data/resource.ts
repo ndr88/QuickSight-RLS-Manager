@@ -107,6 +107,7 @@ const schema = a.schema({
       rlsEnabled: a.enum(Object.values(rlsStatus)), 
       rlsToolManaged: a.boolean().required(), 
       rlsDataSetId: a.string(), // Related RLS dataset ID
+      isRls: a.boolean().required(),
       apiManageable: a.boolean().required(), // Indicates if the dataset is managed by API
       toolCreated: a.boolean().required(), // Indicates if the dataset is managed by this Tool
       dataSetRegion: a.string().required(),

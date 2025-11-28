@@ -18,15 +18,29 @@ interface LogContext {
 
 class Logger {
   private context: LogContext;
+  private minLevel: LogLevel;
 
   constructor(functionName: string, context?: LogContext) {
     this.context = {
       functionName,
       ...context
     };
+    // Get log level from environment variable, default to INFO
+    const envLevel = process.env.LOG_LEVEL?.toUpperCase() as LogLevel;
+    this.minLevel = envLevel || LogLevel.INFO;
+  }
+
+  private shouldLog(level: LogLevel): boolean {
+    const levels = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR];
+    const currentLevelIndex = levels.indexOf(level);
+    const minLevelIndex = levels.indexOf(this.minLevel);
+    return currentLevelIndex >= minLevelIndex;
   }
 
   private log(level: LogLevel, message: string, data?: any) {
+    if (!this.shouldLog(level)) {
+      return;
+    }
     const logEntry = {
       timestamp: new Date().toISOString(),
       level,
