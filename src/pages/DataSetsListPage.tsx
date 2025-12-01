@@ -393,6 +393,17 @@ function DatasetListPage() {
             </li>
           </ul>
         </TextContent>
+        <Header variant="h3">Data Prep Mode:</Header>
+        <TextContent>
+          <ul>
+            <li>
+              <Badge color="green">New</Badge> This DataSet uses the new QuickSight data preparation experience with enhanced transformation capabilities.
+            </li>
+            <li>
+              <Badge color="severity-medium">Old</Badge> This DataSet uses the old data preparation mode (legacy).
+            </li>
+          </ul>
+        </TextContent>
         <Header variant="h3">RLS Column details:</Header>
         <TextContent>
           <ul>
@@ -411,10 +422,16 @@ function DatasetListPage() {
         <TextContent>
           <ul>
             <li>
-              <StatusIndicator type="success">Yes</StatusIndicator>: this DataSet can be managed by this tool.
+              <Badge color="green">Yes</Badge> This DataSet can be managed by this tool.
             </li>
             <li>
-            <StatusIndicator type="error">No</StatusIndicator>: this DataSet cannot be managed by this tool, since the APIs are not supported for the related ingestion mode (e.g. Direct File Upload)
+              <Badge color="red">No</Badge> This DataSet cannot be managed by this tool, since the APIs are not supported for the related ingestion mode (e.g. Direct File Upload).
+            </li>
+            <li>
+              <Badge color="blue">No (is RLS)</Badge> This is an RLS DataSet and is not directly manageable.
+            </li>
+            <li>
+              <Badge color="severity-neutral">N/A</Badge> This DataSet was created by the tool.
             </li>
           </ul>
         </TextContent>
@@ -804,6 +821,17 @@ function DatasetListPage() {
                   minWidth: 120
                 },
                 {
+                  id: "dataPrepMode",
+                  header: "Data Prep",
+                  sortingField: "newDataPrep",
+                  cell: (item: any) => (
+                    <Badge color={item.newDataPrep ? "green" : "severity-medium"}>
+                      {item.newDataPrep ? "New" : "Old"}
+                    </Badge>
+                  ),
+                  minWidth: 100
+                },
+                {
                   id: "rlsEnabled",
                   header: "RLS",
                   sortingField: "rlsEnabled",
@@ -851,15 +879,22 @@ function DatasetListPage() {
                   cell: (item: any) => {
                     if (item.isRls) {
                       return (
-                        <StatusIndicator type="info">
+                        <Badge color="blue">
                           No (is RLS)
-                        </StatusIndicator>
+                        </Badge>
+                      );
+                    }
+                    if (item.toolCreated) {
+                      return (
+                        <Badge color="severity-neutral">
+                          N/A
+                        </Badge>
                       );
                     }
                     return (
-                      <StatusIndicator type={item.toolCreated ? "stopped" : (item.apiManageable ? undefined : "error")}>
-                        {item.toolCreated ? "" : (item.apiManageable ? "Yes" : "No")}
-                      </StatusIndicator>
+                      <Badge color={item.apiManageable ? "green" : "red"}>
+                        {item.apiManageable ? "Yes" : "No"}
+                      </Badge>
                     );
                   },
                   maxWidth: 120
@@ -948,6 +983,7 @@ function DatasetListPage() {
                 { id: "dataSetId", visible: true },
                 { id: "region", visible: true },
                 { id: "usage", visible: true },
+                { id: "dataPrepMode", visible: true },
                 { id: "rlsEnabled", visible: true },
                 { id: "rlsDataSetId", visible: false },
                 { id: "APIManageable", visible: true },

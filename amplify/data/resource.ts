@@ -108,6 +108,7 @@ const schema = a.schema({
       rlsToolManaged: a.boolean().required(), 
       rlsDataSetId: a.string(), // Related RLS dataset ID
       isRls: a.boolean().required(),
+      newDataPrep: a.boolean().required(), // Indicates if dataset uses new data prep mode (has DataPrepConfiguration)
       apiManageable: a.boolean().required(), // Indicates if the dataset is managed by API
       toolCreated: a.boolean().required(), // Indicates if the dataset is managed by this Tool
       dataSetRegion: a.string().required(),
@@ -248,6 +249,7 @@ const schema = a.schema({
       message: a.string().required(),
       datasetsFields: a.string().required(), // This will be a string containing a JSON of dataSets
       spiceCapacityInBytes: a.integer().required(),
+      newDataPrep: a.boolean(),
       errorName: a.string(),
     }))
     .authorization((allow) => [allow.authenticated()])

@@ -119,21 +119,25 @@ export const qs_fetchDataSets = async ({
           let dataSetFields = []
           let apiManageable = true
           let spiceUsedCapacityDataSet = 0
+          let newDataPrep = false
 
           if( resQsDataSetFields && resQsDataSetFields.data?.datasetsFields && resQsDatasetList.data.statusCode == 200 ){
             const data = JSON.parse(resQsDataSetFields.data.datasetsFields)
             dataSetFields = JSON.parse(resQsDataSetFields.data.datasetsFields)
             apiManageable = true
             spiceUsedCapacityDataSet = data.spiceCapacity
+            newDataPrep = resQsDataSetFields.data.newDataPrep || false
             addLog("DataSet Fields successfully fetched for DataSet '" + dataset.Name + "' with DataSetId: " + dataset.DataSetId)
           }else if( resQsDataSetFields && resQsDataSetFields.data?.statusCode == 999 ){
             // TODO ADD CHECK THAT ERROR MESSAGE IS EXACTLY THE CORRECT ONE
             apiManageable = false
             dataSetFields = []
+            newDataPrep = false
             addLog("DataSet " + dataset.Name + " is not manageable through APIs", "WARNING")
           } else {
             apiManageable = false
             dataSetFields = []
+            newDataPrep = false
             //const errorMessage = "Error fetching DataSets Fields from QuickSight API. Some DataSets cannot be fully managed through APIs (e.g. CSVs directly uploaded to QS...)"
             addLog("Attempting to fetch fields for Dataset " + dataset.Name + " [" + dataset.DataSetId + "] failed. Trying to save the Dataset anyway without Fields. Some DataSets cannot be fully managed through APIs (e.g. CSVs directly uploaded to QS...)", "WARNING")
             //addLog("Error Message: " + errorMessage, "ERROR", 500, "GenericError")
@@ -154,7 +158,8 @@ export const qs_fetchDataSets = async ({
             toolCreated: false,
             spiceCapacityInBytes: spiceUsedCapacityDataSet,
             rlsToolManaged: false,
-            isRls: dataset.UseAs === 'RLS_RULES'
+            isRls: dataset.UseAs === 'RLS_RULES',
+            newDataPrep: newDataPrep
           }
           
           // If the dataset exists in the list to delete, remove it from the delete list and update it.

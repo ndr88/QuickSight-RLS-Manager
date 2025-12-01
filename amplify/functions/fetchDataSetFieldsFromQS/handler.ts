@@ -37,14 +37,19 @@ export const handler: Schema["fetchDataSetFieldsFromQS"]["functionHandler"] = as
 
     if (response.DataSet && response.Status === 200 && response.DataSet?.OutputColumns) {
       const outputFields = response.DataSet.OutputColumns.map((column: any) => column.Name);
+      const hasNewDataPrep = response.DataSet.DataPrepConfiguration !== undefined;
       
-      logger.info('Dataset Fields fetched successfully', { fieldsCount: outputFields.length });
+      logger.info('Dataset Fields fetched successfully', { 
+        fieldsCount: outputFields.length,
+        newDataPrep: hasNewDataPrep 
+      });
       
       return {
         statusCode: 200,
         message: 'QuickSight Dataset Fields fetched successfully',
         datasetsFields: JSON.stringify(outputFields),
-        spiceCapacityInBytes: response.DataSet.ConsumedSpiceCapacityInBytes || 0
+        spiceCapacityInBytes: response.DataSet.ConsumedSpiceCapacityInBytes || 0,
+        newDataPrep: hasNewDataPrep
       };
     } else {
       throw new Error('Error processing response');

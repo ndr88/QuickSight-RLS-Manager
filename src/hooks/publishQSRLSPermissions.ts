@@ -450,7 +450,7 @@ export const publishQSRLSPermissions = async ({
     }
 
     if( ! create ){
-      addLog('RLS DataSet ' + rlsDataSetId + ' already exists. Updating it.')
+      addLog('RLS DataSet ' + rlsDataSetId + ' already exists. Updating it.', "WARNING")
 
       const updateRLSDataSetResponse = await client.models.DataSet.update({
         dataSetArn: rlsDataSetId,
@@ -471,7 +471,7 @@ export const publishQSRLSPermissions = async ({
       const rlsDataSetIdExtracted = rlsDataSetIdSplit[rlsDataSetIdSplit.length - 1]
 
       let datasetParams = {
-        name: `Amplify-Managed-RLS for DataSetId: ${dataSetId}`,
+        name: `Managed-RLS for DataSetId: ${dataSetId}`,
         dataSetArn: rlsDataSetArn,
         dataSetId: rlsDataSetIdExtracted, 
         rlsEnabled: RLSStatus.DISABLED , 
@@ -480,7 +480,9 @@ export const publishQSRLSPermissions = async ({
         apiManageable: true,   
         toolCreated: true,
         rlsToolManaged: false,
-        glueS3Id: dataSetId
+        glueS3Id: dataSetId,
+        isRls: true,
+        newDataPrep: true
       }
 
       console.debug(datasetParams)

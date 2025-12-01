@@ -42,6 +42,9 @@ interface DataSetType {
   rlsToolManaged: boolean;
   spiceCapacityInBytes: number;
   isRls: boolean;
+  newDataPrep: boolean;
+  apiManageable: boolean;
+  toolCreated: boolean;
 }
 
 interface RegionSetType {
@@ -1101,6 +1104,38 @@ function AddPermissionPage() {
                                 {datasetDetails.isRls ? "Rules Dataset" : "Data"}
                               </Badge>
                             ),
+                          },
+                          {
+                            label: "Data Prep Mode",
+                            value: (
+                              <Badge color={datasetDetails.newDataPrep ? "green" : "severity-medium"}>
+                                {datasetDetails.newDataPrep ? "New" : "Old"}
+                              </Badge>
+                            ),
+                          },
+                          {
+                            label: "Manageable",
+                            value: (() => {
+                              if (datasetDetails.isRls) {
+                                return (
+                                  <Badge color="blue">
+                                    No (is RLS)
+                                  </Badge>
+                                );
+                              }
+                              if (datasetDetails.toolCreated) {
+                                return (
+                                  <Badge color="severity-neutral">
+                                    N/A
+                                  </Badge>
+                                );
+                              }
+                              return (
+                                <Badge color={datasetDetails.apiManageable ? "green" : "red"}>
+                                  {datasetDetails.apiManageable ? "Yes" : "No"}
+                                </Badge>
+                              );
+                            })(),
                           },
                           ...(datasetDetails.spiceCapacityInBytes ? [{
                             label: "Consumed SPICE Capacity",
