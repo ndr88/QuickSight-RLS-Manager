@@ -41,6 +41,7 @@ interface DataSetType {
   rlsDataSetId: string;
   rlsToolManaged: boolean;
   spiceCapacityInBytes: number;
+  isRls: boolean;
 }
 
 interface RegionSetType {
@@ -1093,6 +1094,14 @@ function AddPermissionPage() {
                             label: "Import Mode",
                             value: datasetDetails.importMode,
                           },
+                          {
+                            label: "Usage",
+                            value: (
+                              <Badge color={datasetDetails.isRls ? "blue" : "green"}>
+                                {datasetDetails.isRls ? "Rules Dataset" : "Data"}
+                              </Badge>
+                            ),
+                          },
                           ...(datasetDetails.spiceCapacityInBytes ? [{
                             label: "Consumed SPICE Capacity",
                             value: formatBytes(datasetDetails.spiceCapacityInBytes)
@@ -1105,15 +1114,15 @@ function AddPermissionPage() {
                             label: "Last Updated",
                             value: datasetDetails.lastUpdatedTime,
                           },
-                          {
+                          ...(!datasetDetails.isRls ? [{
                             label: "RLS Enabled",
                             value: (<Badge color={datasetDetails.rlsEnabled === "ENABLED" ? (datasetDetails.rlsToolManaged === true 
                               ? "green" 
                               : "severity-medium") : "severity-neutral"}>
                               {datasetDetails.rlsEnabled}
                             </Badge>),
-                          },
-                          ...(datasetDetails.rlsEnabled === "ENABLED" ? [
+                          }] : []),
+                          ...(datasetDetails.rlsEnabled === "ENABLED" && !datasetDetails.isRls ? [
                             {
                               label: "RLS Dataset ARN",
                               value:  (
@@ -1145,9 +1154,10 @@ function AddPermissionPage() {
           <Container
             header={
               <Header
-                description={<StatusIndicator type={permissionStatusIndicator.status as StatusIndicatorProps.Type}>{permissionStatusIndicator.message}</StatusIndicator>}
+                description={!getSelectedDatasetDetails()?.isRls ? <StatusIndicator type={permissionStatusIndicator.status as StatusIndicatorProps.Type}>{permissionStatusIndicator.message}</StatusIndicator> : undefined}
                 variant="h2"
                 actions={
+                  !getSelectedDatasetDetails()?.isRls ? (
                   <SpaceBetween
                   direction="horizontal"
                   size="xs"
@@ -1178,6 +1188,7 @@ function AddPermissionPage() {
                     </Button>
                     
                   </SpaceBetween>
+                  ) : undefined
                 }
               >
                 Permissions
@@ -1185,8 +1196,21 @@ function AddPermissionPage() {
             }
           >
             <SpaceBetween size="l">
-              <TextContent><p>Anyone whom you shared your dashboard with can see all the data in it, unless the dataset is restricted by dataset rules.</p><p>"<strong>*</strong>" is the wildcard.</p></TextContent>
-              <Table
+              {(() => {
+                const datasetDetails = getSelectedDatasetDetails();
+                if (datasetDetails?.isRls) {
+                  return (
+                    <Box variant="div" padding="l">
+                      <StatusIndicator type="warning">
+                        This is a Row Level Security DataSet. You cannot edit the permissions of this DataSet.
+                      </StatusIndicator>
+                    </Box>
+                  );
+                }
+                return (
+                  <>
+                    <TextContent><p>Anyone whom you shared your dashboard with can see all the data in it, unless the dataset is restricted by dataset rules.</p><p>"<strong>*</strong>" is the wildcard.</p></TextContent>
+                    <Table
                 trackBy="permissionId"
                 loadingText="Loading Permissions"
                 loading={permissionTableLoading}
@@ -1359,12 +1383,15 @@ function AddPermissionPage() {
                   </Box>
                 }
               />
+                  </>
+                );
+              })()}
             </SpaceBetween>
 
           </Container>
           )}
           {
-            seeCSVOutput && (
+            seeCSVOutput && !getSelectedDatasetDetails()?.isRls && (
               <ExpandableSection
                 variant="container"
                 headerText={<>Export CSV {codeViewLoading && <Spinner />}</>}
@@ -1397,6 +1424,7 @@ function AddPermissionPage() {
               </ExpandableSection>
             )
           }
+          {!getSelectedDatasetDetails()?.isRls && (
           <ExpandableSection 
               headerText={
                 <>
@@ -1446,6 +1474,7 @@ function AddPermissionPage() {
               />
             </SpaceBetween>
           </ExpandableSection>
+          )}
         </SpaceBetween>
         <Modal
 

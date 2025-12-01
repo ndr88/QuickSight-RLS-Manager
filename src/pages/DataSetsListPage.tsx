@@ -381,6 +381,17 @@ function DatasetListPage() {
     setHelpPanelContent(
       <SpaceBetween size="l">
         <Header variant="h2">DataSet List</Header>
+        <Header variant="h3">Usage Column:</Header>
+        <TextContent>
+          <ul>
+            <li>
+              <Badge color="green">Data</Badge> This DataSet contains actual data and can be used in QuickSight analyses and dashboards.
+            </li>
+            <li>
+              <Badge color="blue">Rules Dataset</Badge> This DataSet contains Row-Level Security (RLS) rules and is used to control data access permissions.
+            </li>
+          </ul>
+        </TextContent>
         <Header variant="h3">RLS Column details:</Header>
         <TextContent>
           <ul>
@@ -774,6 +785,16 @@ function DatasetListPage() {
                   minWidth: 120
                 },
                 {
+                  id: "usage",
+                  header: "Usage",
+                  cell: (item: any) => (
+                    <Badge color={item.isRls ? "blue" : "green"}>
+                      {item.isRls ? "Rules Dataset" : "Data"}
+                    </Badge>
+                  ),
+                  minWidth: 120
+                },
+                {
                   id: "rlsEnabled",
                   header: "RLS",
                   cell: (item: any) => (
@@ -906,6 +927,7 @@ function DatasetListPage() {
                 { id: "Name", visible: true },
                 { id: "dataSetId", visible: true },
                 { id: "region", visible: true },
+                { id: "usage", visible: true },
                 { id: "rlsEnabled", visible: true },
                 { id: "rlsDataSetId", visible: false },
                 { id: "APIManageable", visible: true },

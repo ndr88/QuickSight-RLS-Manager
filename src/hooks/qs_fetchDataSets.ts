@@ -110,6 +110,8 @@ export const qs_fetchDataSets = async ({
             dataSetFields = []
             addLog("DataSet " + dataset.Name + " is not manageable through APIs", "WARNING")
           } else {
+            apiManageable = false
+            dataSetFields = []
             //const errorMessage = "Error fetching DataSets Fields from QuickSight API. Some DataSets cannot be fully managed through APIs (e.g. CSVs directly uploaded to QS...)"
             addLog("Attempting to fetch fields for Dataset " + dataset.Name + " [" + dataset.DataSetId + "] failed. Trying to save the Dataset anyway without Fields. Some DataSets cannot be fully managed through APIs (e.g. CSVs directly uploaded to QS...)", "WARNING")
             //addLog("Error Message: " + errorMessage, "ERROR", 500, "GenericError")
