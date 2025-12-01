@@ -211,6 +211,7 @@ const publishRLS0Q3s_Policy = new iam.PolicyStatement({
     "quicksight:UpdateDataSet",
     "quicksight:PassDataSet",
     "quicksight:DescribeDataSource",
+    "quicksight:TagResource"
   ],
   resources: ["*"],
 });
@@ -232,6 +233,7 @@ const publishRLS04QsUpdateMainDataSetRLS_Policy = new iam.PolicyStatement({
     "quicksight:UpdateDataSet",
     "quicksight:PassDataSet",
     "quicksight:DescribeDataSource",
+    "quicksight:TagResource"
   ],
   resources: ["*"],
 });
