@@ -78,6 +78,10 @@ function DatasetListPage() {
 
   const [accountId, setAccountID] = useState<string>("")
 
+  // Sorting
+  const [sortingColumn, setSortingColumn] = useState<any>({ sortingField: "name" });
+  const [sortingDescending, setSortingDescending] = useState<boolean>(false);
+
   /**
    * Add Log to output text area
    * type can be ERROR or WARNING
@@ -253,76 +257,73 @@ function DatasetListPage() {
   }, [query])
 
 
-  useEffect(() => { // queryFilterConditions -> Apply Filters
-    //console.log("UseEffect: on queryFilterConditions change -> create filters")
+  useEffect(() => { // queryFilterConditions -> Apply Filters and Sorting
+    console.log("Applying filters:", queryFilterConditions);
     
-    const filterDataSets = async () => {
-      const datasetData = await fetchDatasets(queryFilterConditions);
-      if(! datasetData.firstPage && ! datasetData.fullList ){
-        console.error("No datasets found");
-      }
-      
-      setFilteredDatasets(datasetData.firstPage || []);
-    }
-
-    const fetchDatasetsFiltered = async () => {
-
-      const token = pageTokens[currentPageIndex - 1]
-
-      const { data: dataSetList, errors } = await client.models.DataSet.list({
-        limit: pageSize,
-        nextToken: token,
-        ...(queryFilterConditions.length > 0 && {
-          filter:{
-            [query.operation]: queryFilterConditions
-          }
-        })
-      })
-
-      if(!errors && dataSetList){
-        setFilteredDatasets(dataSetList)
-        setIsLoading(false)
-      }else{
-        setFilteredDatasets([])
-        setIsLoading(false)
-        throw new Error(`Error fetching datasets: ${errors}`);
+    // Start with original datasets
+    let filtered = [...originalDatasets];
+    
+    // Apply filters if any
+    if (queryFilterConditions.length > 0) {
+      for (const condition of queryFilterConditions) {
+        if (condition.or) {
+          // OR condition (for arrays like region, name, datasetId)
+          filtered = filtered.filter(dataset => {
+            return condition.or.some((orCondition: any) => {
+              const key = Object.keys(orCondition)[0];
+              const value = orCondition[key].eq;
+              return dataset[key] === value;
+            });
+          });
+        } else {
+          // AND condition (for single values like rlsEnabled, apiManageable, toolCreated)
+          const key = Object.keys(condition)[0];
+          const value = condition[key].eq;
+          filtered = filtered.filter(dataset => dataset[key] === value);
+        }
       }
     }
     
-    filterDataSets()
+    // Apply sorting
+    if (sortingColumn.sortingField) {
+      filtered.sort((a, b) => {
+        const aValue = a[sortingColumn.sortingField];
+        const bValue = b[sortingColumn.sortingField];
+        
+        // Handle null/undefined values
+        if (aValue == null && bValue == null) return 0;
+        if (aValue == null) return 1;
+        if (bValue == null) return -1;
+        
+        // Compare values
+        let comparison = 0;
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          comparison = aValue.localeCompare(bValue);
+        } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+          comparison = aValue - bValue;
+        } else {
+          comparison = String(aValue).localeCompare(String(bValue));
+        }
+        
+        return sortingDescending ? -comparison : comparison;
+      });
+    }
+    
+    console.log(`Filtered ${filtered.length} datasets from ${originalDatasets.length} total`);
+    setFilteredDatasetNumber(filtered.length);
+    
+    // Apply pagination to filtered and sorted results
+    const startIndex = (currentPageIndex - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    setFilteredDatasets(filtered.slice(startIndex, endIndex));
+    setIsLoading(false);
 
-    fetchDatasetsFiltered()
-
-  }, [queryFilterConditions])
+  }, [queryFilterConditions, originalDatasets, currentPageIndex, sortingColumn, sortingDescending])
 
   useEffect(() => {
-    
-    setIsLoading(true)
-    const updateTablePage = async () => {
-      //console.log("useEffect - currentPageIndex - updateTablePage")
-      const token = pageTokens[currentPageIndex - 1]
-
-      const { data: dataSetList, errors } = await client.models.DataSet.list({
-        limit: pageSize,
-        nextToken: token,
-        filter:{
-          [query.operation]: queryFilterConditions
-        }
-      })
-
-      if(!errors && dataSetList){
-        setFilteredDatasets(dataSetList)
-      }else{
-        setFilteredDatasets([])
-        throw new Error(`Error fetching datasets: ${errors}`);
-      }
-    }
-
-    //console.log("useEffect - currentPageIndex - calling updateTablePage")
-    updateTablePage()
-    //console.log("useEffect - currentPageIndex - finished updateTablePage")
-    setIsLoading(false)
-    
+    // Pagination is now handled by re-running the filter logic
+    // This useEffect is kept for compatibility but does nothing
+    // The actual pagination happens in the queryFilterConditions useEffect
   }, [currentPageIndex])
   /**
    * Define the function that will be used to change status of the Status and Logs container
@@ -711,29 +712,35 @@ function DatasetListPage() {
               stripedRows
               wrapLines
               variant="embedded"
+              sortingColumn={sortingColumn}
+              sortingDescending={sortingDescending}
+              onSortingChange={({ detail }) => {
+                setSortingColumn(detail.sortingColumn);
+                setSortingDescending(detail.isDescending || false);
+              }}
               header={
                 <Header
                 variant="h2"
                 description={`Last Update: ${maxUpdatedAt || ''}`}
                 counter={"(" + filteredDatasetNumber + ")"}
-                actions={
-                  <SpaceBetween
-                  direction="horizontal"
-                  size="xs"
-                  >
-                    <ButtonDropdown
-                      items={[
-                        {
-                          text: "Refresh Datasets",
-                          id: "rm",
-                          disabled: true
-                        },
-                      ]}
-                    >
-                      Actions
-                    </ButtonDropdown>
-                  </SpaceBetween>
-                }
+                // actions={
+                //   <SpaceBetween
+                //   direction="horizontal"
+                //   size="xs"
+                //   >
+                //     <ButtonDropdown
+                //       items={[
+                //         {
+                //           text: "Refresh Datasets",
+                //           id: "rm",
+                //           disabled: true
+                //         },
+                //       ]}
+                //     >
+                //       Actions
+                //     </ButtonDropdown>
+                //   </SpaceBetween>
+                // }
               >
                 Datasets List
               </Header>
@@ -755,18 +762,18 @@ function DatasetListPage() {
                 {
                   id: "Name",
                   header: "Name",
+                  sortingField: "name",
                   cell: (item: any) => (
-                    <>
-                      { ( item.toolCreated || ! item.apiManageable ) ? item.name : 
-                        <Link href={`/manage-permissions?dataSetId=${item.dataSetId}&region=${item.dataSetRegion}`}>{item.name}</Link>
-                      }
-                    </>
+                    <Link href={`/manage-permissions?dataSetId=${item.dataSetId}&region=${item.dataSetRegion}`}>
+                      {item.name}
+                    </Link>
                   ),
                   maxWidth: 300
                 },
                 {
                   id: "dataSetId",
                   header: "ID",
+                  sortingField: "dataSetId",
                   cell: (item: any) => (
                     <CopyToClipboard
                       copyButtonText="Copy DataSet ID"
@@ -781,12 +788,14 @@ function DatasetListPage() {
                 {
                   id: "region",
                   header: "Region",
+                  sortingField: "dataSetRegion",
                   cell: (item: any) => item.dataSetRegion,
                   minWidth: 120
                 },
                 {
                   id: "usage",
                   header: "Usage",
+                  sortingField: "isRls",
                   cell: (item: any) => (
                     <Badge color={item.isRls ? "blue" : "green"}>
                       {item.isRls ? "Rules Dataset" : "Data"}
@@ -797,6 +806,7 @@ function DatasetListPage() {
                 {
                   id: "rlsEnabled",
                   header: "RLS",
+                  sortingField: "rlsEnabled",
                   cell: (item: any) => (
                     <>
                       {item.toolCreated ? <StatusIndicator type="stopped">RLS DataSet</StatusIndicator> : 
@@ -837,12 +847,22 @@ function DatasetListPage() {
                 {
                   id: "APIManageable",
                   header: "Manageable",
-                  cell: (item: any) => (
-                    <StatusIndicator type={item.toolCreated ? "stopped" : (item.apiManageable ? undefined : "error")}>
-                      {item.toolCreated ? "" : (item.apiManageable ? "Yes" : "No")}
-                    </StatusIndicator>
-                  ),
-                  maxWidth: 80
+                  sortingField: "apiManageable",
+                  cell: (item: any) => {
+                    if (item.isRls) {
+                      return (
+                        <StatusIndicator type="info">
+                          No (is RLS)
+                        </StatusIndicator>
+                      );
+                    }
+                    return (
+                      <StatusIndicator type={item.toolCreated ? "stopped" : (item.apiManageable ? undefined : "error")}>
+                        {item.toolCreated ? "" : (item.apiManageable ? "Yes" : "No")}
+                      </StatusIndicator>
+                    );
+                  },
+                  maxWidth: 120
                 },
                 {
                   id: "ToolCreated",
@@ -934,7 +954,7 @@ function DatasetListPage() {
                 { id: "ToolCreated", visible: false },
                 { id: "ARN", visible: false },
                 { id: "RLSToolManaged", visible: false },
-                { id: "delete", visible: true },
+                { id: "delete", visible: false },
                 { id: "glueS3Id", visible: false }
               ]}
               items={filteredDatasets}

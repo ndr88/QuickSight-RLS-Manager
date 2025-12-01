@@ -80,13 +80,35 @@ export const qs_fetchDataSets = async ({
 
         for( const dataset of datasetsList ){
           addLog("---")
+          
           // Check if dataset has RLS enabled
-          const rlsEnabled = dataset.RowLevelPermissionDataSet?.Status === 'ENABLED'
-            ? RLSStatus.ENABLED 
-            : RLSStatus.DISABLED;
-
-          // Determine RLS dataset ID without useState
-          const rlsDataSetId = dataset.RowLevelPermissionDataSet?.Arn || '';
+          // Handle both old format (RowLevelPermissionDataSet) and new format (RowLevelPermissionDataSetMap)
+          let rlsEnabled = RLSStatus.DISABLED;
+          let rlsDataSetId = '';
+          
+          // New format: RowLevelPermissionDataSetMap (object with keys)
+          if (dataset.RowLevelPermissionDataSetMap) {
+            const rlsMap = dataset.RowLevelPermissionDataSetMap;
+            const rlsKeys = Object.keys(rlsMap);
+            
+            if (rlsKeys.length > 0) {
+              // Get the first RLS dataset from the map
+              const firstRlsKey = rlsKeys[0];
+              const rlsConfig = rlsMap[firstRlsKey];
+              
+              rlsEnabled = rlsConfig.Status === 'ENABLED' 
+                ? RLSStatus.ENABLED 
+                : RLSStatus.DISABLED;
+              rlsDataSetId = rlsConfig.Arn || '';
+            }
+          }
+          // Old format: RowLevelPermissionDataSet (single object) - for backward compatibility
+          else if (dataset.RowLevelPermissionDataSet) {
+            rlsEnabled = dataset.RowLevelPermissionDataSet.Status === 'ENABLED'
+              ? RLSStatus.ENABLED 
+              : RLSStatus.DISABLED;
+            rlsDataSetId = dataset.RowLevelPermissionDataSet.Arn || '';
+          }
 
           // Fetching DataSet Fields
           const resQsDataSetFields = await client.queries.fetchDataSetFieldsFromQS({
