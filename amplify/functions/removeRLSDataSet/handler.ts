@@ -38,14 +38,23 @@ export const handler: Schema["removeRLSDataSet"]["functionHandler"] = async ( ev
     if (response.DataSet && response.Status === 200) {
       const dataSetDetails = response.DataSet;
       
-      const updateDataSetCommand = new UpdateDataSetCommand({
+      // Determine if dataset uses new data prep experience
+      const isNewDataPrep = !!dataSetDetails.DataPrepConfiguration;
+      
+      logger.info('Dataset data prep mode', { 
+        isNewDataPrep, 
+        hasDataPrepConfig: !!dataSetDetails.DataPrepConfiguration,
+        hasSemanticModel: !!dataSetDetails.SemanticModelConfiguration 
+      });
+      
+      // Build update command with conditional fields based on data prep experience
+      const updateParams: any = {
         AwsAccountId: accountId,
         DataSetId: dataSetId,
         Name: dataSetDetails.Name,
         PhysicalTableMap: dataSetDetails.PhysicalTableMap,
-        LogicalTableMap: dataSetDetails.LogicalTableMap,
         ImportMode: dataSetDetails.ImportMode,
-        // RowLevelPermissionDataSet: REMOVED
+        // RowLevelPermissionDataSet: REMOVED (handled differently for new vs legacy)
         ...(dataSetDetails.RowLevelPermissionTagConfiguration && {
           RowLevelPermissionTagConfiguration: dataSetDetails.RowLevelPermissionTagConfiguration
         }),
@@ -67,7 +76,35 @@ export const handler: Schema["removeRLSDataSet"]["functionHandler"] = async ( ev
         ...(dataSetDetails.ColumnGroups && {
           ColumnGroups: dataSetDetails.ColumnGroups
         }),
-      });
+      };
+
+      if (isNewDataPrep) {
+        // NEW DATA PREP: Remove RLS from SemanticModelConfiguration
+        logger.info('Removing RLS from new data prep dataset');
+        
+        updateParams.DataPrepConfiguration = dataSetDetails.DataPrepConfiguration;
+        
+        // Clone SemanticModelConfiguration and remove RLS from each table
+        const semanticModelConfig = JSON.parse(JSON.stringify(dataSetDetails.SemanticModelConfiguration || {}));
+        
+        if (semanticModelConfig.TableMap) {
+          Object.keys(semanticModelConfig.TableMap).forEach(tableKey => {
+            delete semanticModelConfig.TableMap[tableKey].RowLevelPermissionConfiguration;
+          });
+        }
+        
+        updateParams.SemanticModelConfiguration = semanticModelConfig;
+      } else {
+        // LEGACY DATA PREP: RLS at top level (just don't include it)
+        logger.info('Removing RLS from legacy data prep dataset');
+        
+        if (dataSetDetails.LogicalTableMap) {
+          updateParams.LogicalTableMap = dataSetDetails.LogicalTableMap;
+        }
+        // RowLevelPermissionDataSet is not included, which removes it
+      }
+
+      const updateDataSetCommand = new UpdateDataSetCommand(updateParams);
 
       const updateDataSetResponse = await quicksightClient.send(updateDataSetCommand);
 

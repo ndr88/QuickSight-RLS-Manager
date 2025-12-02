@@ -40,7 +40,27 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
     if (dataSetInfoResponse && dataSetInfoResponse.Status === 200 && dataSetInfoResponse.DataSet) {
       const dataSetToSecure = dataSetInfoResponse.DataSet;
 
-      if (dataSetInfoResponse.DataSet.RowLevelPermissionDataSet?.Arn === rlsDataSetArn) {
+      // Check if RLS is already configured (check both legacy and new data prep locations)
+      let existingRlsArn: string | undefined;
+      
+      // Check legacy location (top level)
+      if (dataSetInfoResponse.DataSet.RowLevelPermissionDataSet?.Arn) {
+        existingRlsArn = dataSetInfoResponse.DataSet.RowLevelPermissionDataSet.Arn;
+      }
+      
+      // Check new data prep location (inside SemanticModelConfiguration)
+      if (!existingRlsArn && dataSetInfoResponse.DataSet.SemanticModelConfiguration?.TableMap) {
+        const tableMap = dataSetInfoResponse.DataSet.SemanticModelConfiguration.TableMap;
+        const firstTableKey = Object.keys(tableMap)[0];
+        if (firstTableKey) {
+          const rlsConfig = tableMap[firstTableKey].RowLevelPermissionConfiguration?.RowLevelPermissionDataSet;
+          if (rlsConfig?.Arn && rlsConfig?.Status === "ENABLED") {
+            existingRlsArn = rlsConfig.Arn;
+          }
+        }
+      }
+      
+      if (existingRlsArn === rlsDataSetArn) {
         logger.info('DataSet RLS already set to target ARN, verifying RLS DataSet exists');
         
         const rlsDataSetIdExtracted = rlsDataSetArn.split("/").pop();
@@ -71,20 +91,70 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
 
       logger.info('Updating DataSet with RLS configuration');
 
-      const updateDataSetCommand = new UpdateDataSetCommand({
+      // Determine if dataset uses new data prep experience
+      const isNewDataPrep = !!dataSetToSecure.DataPrepConfiguration;
+      
+      logger.info('Dataset data prep mode', { 
+        isNewDataPrep, 
+        hasDataPrepConfig: !!dataSetToSecure.DataPrepConfiguration,
+        hasSemanticModel: !!dataSetToSecure.SemanticModelConfiguration 
+      });
+
+      // Build update command with conditional fields based on data prep experience
+      const updateParams: any = {
         AwsAccountId: accountId,
         DataSetId: dataSetToSecure.DataSetId,
         Name: dataSetToSecure.Name,
         PhysicalTableMap: dataSetToSecure.PhysicalTableMap,
-        LogicalTableMap: dataSetToSecure.LogicalTableMap,
         ImportMode: dataSetToSecure.ImportMode,
-        RowLevelPermissionDataSet: {
+      };
+
+      if (isNewDataPrep) {
+        // NEW DATA PREP: RLS goes inside SemanticModelConfiguration
+        logger.info('Using new data prep RLS configuration');
+        
+        updateParams.DataPrepConfiguration = dataSetToSecure.DataPrepConfiguration;
+        
+        // Clone SemanticModelConfiguration and add RLS to each table
+        const semanticModelConfig = JSON.parse(JSON.stringify(dataSetToSecure.SemanticModelConfiguration || {}));
+        
+        if (semanticModelConfig.TableMap) {
+          Object.keys(semanticModelConfig.TableMap).forEach(tableKey => {
+            // Correct structure for new data prep
+            semanticModelConfig.TableMap[tableKey].RowLevelPermissionConfiguration = {
+              RowLevelPermissionDataSet: {
+                Arn: rlsDataSetArn,
+                PermissionPolicy: "GRANT_ACCESS",
+                FormatVersion: "VERSION_2",
+                Status: "ENABLED",
+              }
+            };
+          });
+        }
+        
+        updateParams.SemanticModelConfiguration = semanticModelConfig;
+      } else {
+        // LEGACY DATA PREP: RLS at top level
+        logger.info('Using legacy data prep RLS configuration');
+        
+        if (dataSetToSecure.LogicalTableMap) {
+          updateParams.LogicalTableMap = dataSetToSecure.LogicalTableMap;
+        }
+        
+        updateParams.RowLevelPermissionDataSet = {
           Arn: rlsDataSetArn,
           PermissionPolicy: "GRANT_ACCESS",
           Status: "ENABLED",
           FormatVersion: "VERSION_2",
-        }
-      });
+        };
+      }
+
+      // Include RowLevelPermissionTagConfiguration if present
+      if (dataSetToSecure.RowLevelPermissionTagConfiguration) {
+        updateParams.RowLevelPermissionTagConfiguration = dataSetToSecure.RowLevelPermissionTagConfiguration;
+      }
+
+      const updateDataSetCommand = new UpdateDataSetCommand(updateParams);
 
       const updateDataSetResponse = await quicksightClient.send(updateDataSetCommand);
 

@@ -216,7 +216,7 @@ async function createRLSDataSetAndWait(config: {
 ## DataSet Configuration
 
 ### DataSet Naming
-- Name format: `Amplify-Managed-RLS for DataSetId: {dataSetId}`
+- Name format: `Managed-RLS for DataSetId: {dataSetId}`
 - ID format: `RLS-{uuid}` (for new DataSets)
 
 ### DataSet Properties
@@ -277,7 +277,7 @@ The Lambda execution role needs the following QuickSight permissions:
 aws quicksight create-data-set \
   --aws-account-id 123456789012 \
   --data-set-id RLS-abc-123 \
-  --name "Amplify-Managed-RLS for DataSetId: dataset-123" \
+  --name "Managed-RLS for DataSetId: dataset-123" \
   --import-mode SPICE \
   --physical-table-map file://physical-table-map.json \
   --tags Key=RLS-Manager,Value=True \
@@ -287,7 +287,7 @@ aws quicksight create-data-set \
 aws quicksight update-data-set \
   --aws-account-id 123456789012 \
   --data-set-id RLS-abc-123 \
-  --name "Amplify-Managed-RLS for DataSetId: dataset-123" \
+  --name "Managed-RLS for DataSetId: dataset-123" \
   --import-mode SPICE \
   --physical-table-map file://physical-table-map.json \
   --region eu-west-1

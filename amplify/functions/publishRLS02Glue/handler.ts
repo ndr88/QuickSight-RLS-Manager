@@ -78,7 +78,7 @@ export const handler: Schema["publishRLS02Glue"]["functionHandler"] = async ( ev
             .filter((columnName): columnName is string => columnName !== null)
             .map(columnName => ({
               Name: columnName,
-              Type: 'STRING'
+              Type: 'string'
             })),
           Location: glueTableLocation,
           InputFormat: 'org.apache.hadoop.mapred.TextInputFormat',
@@ -88,10 +88,18 @@ export const handler: Schema["publishRLS02Glue"]["functionHandler"] = async ( ev
             Parameters: {
               'separatorChar': ',',
               'quoteChar': '"',
+              'escapeChar': '\\',
+              'serialization.format': '1',
               'skip.header.line.count': '1',
             }
           }
         },
+        TableType: 'EXTERNAL_TABLE',
+        Parameters: {
+          'skip.header.line.count': '1',
+          'has_encrypted_data': 'false',
+          'EXTERNAL': 'TRUE'
+        }
       }
     };
 

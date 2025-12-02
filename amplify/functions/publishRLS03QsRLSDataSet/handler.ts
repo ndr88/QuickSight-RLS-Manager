@@ -45,6 +45,8 @@ export const handler: Schema["publishRLS03QsRLSDataSet"]["functionHandler"] = as
     const quicksightClient = getQuickSightClient(region);
 
     const newDataSetuuid = uuidv4();
+    const glueTableName = `qs-rls-${dataSetId}`;
+    const sqlQuery = `SELECT * FROM "${glueDatabaseName}"."${glueTableName}"`;
 
     const dataSetParams = {
       AwsAccountId: accountId,
@@ -53,15 +55,22 @@ export const handler: Schema["publishRLS03QsRLSDataSet"]["functionHandler"] = as
       ImportMode: 'SPICE',
       PhysicalTableMap: {
         [newDataSetuuid]: {
-          RelationalTable: {
+          CustomSql: {
             DataSourceArn: `arn:aws:quicksight:${region}:${accountId}:datasource/${qsDataSourceName}`,
-            Name: `qs-rls-${dataSetId}`,
-            Catalog: "AwsDataCatalog",
-            Schema: glueDatabaseName,
-            InputColumns: csvColumns.map(columnName => ({
+            Name: qsDataSetName,
+            SqlQuery: sqlQuery,
+            Columns: csvColumns.map(columnName => ({
               Name: columnName,
               Type: 'STRING'
             }))
+          }
+        }
+      },
+      LogicalTableMap: {
+        [newDataSetuuid]: {
+          Alias: qsDataSetName,
+          Source: {
+            PhysicalTableId: newDataSetuuid
           }
         }
       },
