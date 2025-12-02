@@ -96,6 +96,8 @@ interface PermissionItem {
   values: string;
   permissionId: string;
   createdAt?: string;
+  status?: string;
+  lastPublishedAt?: string;
   children?: PermissionItem[];
 }
 
@@ -273,6 +275,11 @@ function AddPermissionPage() {
   const [removeAllConfirmText, setRemoveAllConfirmText] = useState<string>('');
   const [removingAllPermissions, setRemovingAllPermissions] = useState<boolean>(false);
 
+  // Publish RLS Modal
+  const [publishModalVisible, setPublishModalVisible] = useState<boolean>(false);
+  const [publishComplete, setPublishComplete] = useState<boolean>(false);
+  const [publishHasErrors, setPublishHasErrors] = useState<boolean>(false);
+
   /**
    * Add Log to output text area
    * type can be ERROR or WARNING
@@ -430,6 +437,7 @@ function AddPermissionPage() {
     if (!selectedDataset?.dataSetArn) return; // Check for dataSetArn
     
     try {
+      setPermissionTableLoading(true);
       setPermissionsList([])
       const response = await client.models.Permission.list({
         filter: {
@@ -555,6 +563,7 @@ function AddPermissionPage() {
         userGroupArn: userGroupArn,
         field: field,
         rlsValues: rlsValues,
+        status: 'PENDING',
       })
       
       if( response?.errors ){
@@ -698,10 +707,17 @@ function AddPermissionPage() {
   const publishQSRLSPermissionsClickHandler = async () => {
     setCurrentAction('publish');
     resetAllSteps();
+    setPublishModalVisible(true);
+    setPublishComplete(false);
+    setPublishHasErrors(false);
     setLogs("")
     setStatusIndicator({status: "loading", message: "Publishing Permission in progress"})
   
     addLog("Publishing RLS Permissions to QuickSight")
+    
+    // Track errors locally to avoid state timing issues
+    let hadErrors = false;
+    
     try {
       setPublishQSRLSLoading(true)
 
@@ -747,6 +763,18 @@ function AddPermissionPage() {
 
       await fetchDatasets(selectedRegion.value);
 
+      // Mark all permissions for this dataset as PUBLISHED
+      addLog('Updating permission statuses to PUBLISHED...');
+      const permissionsToUpdate = permissionsList.filter(p => p.dataSetArn === selectedDataset.dataSetArn);
+      for (const permission of permissionsToUpdate) {
+        await client.models.Permission.update({
+          id: permission.id,
+          status: 'PUBLISHED',
+          lastPublishedAt: new Date().toISOString()
+        });
+      }
+      addLog(`✓ Updated ${permissionsToUpdate.length} permission(s) status`);
+
       setStatusIndicator({status:"success", message:"Ok"})
       
       // Refresh DataSet List
@@ -756,8 +784,41 @@ function AddPermissionPage() {
     } catch (err) {
       console.error('Error publishing permissions:', err);
       addLog('Error publishing permissions: ' + err, "ERROR", 500, "PublishingPermissionError")
+      hadErrors = true;
+      setPublishHasErrors(true);
+      
+      // Mark ONLY PENDING permissions as FAILED (don't change already PUBLISHED ones)
+      if (selectedDataset?.dataSetArn) {
+        const permissionsToUpdate = permissionsList.filter(
+          p => p.dataSetArn === selectedDataset.dataSetArn && p.status === 'PENDING'
+        );
+        for (const permission of permissionsToUpdate) {
+          await client.models.Permission.update({
+            id: permission.id,
+            status: 'FAILED'
+          });
+        }
+        addLog(`Marked ${permissionsToUpdate.length} pending permission(s) as FAILED`);
+        
+        // Refresh permissions to show updated status
+        await fetchPermissions();
+      }
     }finally{
       setPublishQSRLSLoading(false)
+      setPublishComplete(true);
+      
+      // Use local error flag to decide whether to auto-close
+      addLog(`Publish completed. Had errors: ${hadErrors}, Error count: ${errorsCount}, Warning count: ${warningsCount}`);
+      
+      if (!hadErrors && errorsCount === 0 && warningsCount === 0) {
+        // Success - auto close after showing success message
+        addLog('No issues detected, auto-closing modal in 2 seconds...');
+        setTimeout(() => {
+          setPublishModalVisible(false);
+        }, 2000);
+      } else {
+        addLog('Issues detected, modal will remain open. Click OK to close.');
+      }
     }
   
   }
@@ -1042,7 +1103,8 @@ function AddPermissionPage() {
           dataSetArn: selectedDataset.dataSetArn,
           userGroupArn: perm.userGroupArn,
           field: perm.field,
-          rlsValues: perm.rlsValues
+          rlsValues: perm.rlsValues,
+          status: 'PENDING'
         });
       }
       
@@ -1292,13 +1354,13 @@ function AddPermissionPage() {
       case rls && tool && !hasPermissions: // true, true, false
         setPermissionStatusIndicator ({
               status: "error",
-              message: "RLS is enabled and RLS Tool Managed is true, but there are no permissions defined. Try refreshing the Permissions List or the Region data from Global Settings page."
+              message: "RLS is enabled and managed by RLS Tool, but no permissions are defined. Please add permissions or refresh the data."
           });
         break
       case ((rls && !tool) || (!rls && !tool)) && hasPermissions: // true, false, true OR false, false, true
         setPermissionStatusIndicator ({
               status: "warning",
-              message: "There are some Permissions defined, but RLS is disabled or not managed by the RLS Tool. Please push the RLS to QuickSight or try refreshing the Region data from Global Settings page."
+              message: "Permissions are defined but RLS is not enabled or not managed by the tool. Click 'Publish RLS in QuickSight' to apply them, or refresh the region data from Global Settings."
           });
         break  
       case ((! rls && ! tool && ! hasPermissions) || (rls && ! tool && ! hasPermissions)):
@@ -1321,6 +1383,11 @@ function AddPermissionPage() {
 
   useEffect(() => {
     const checkPermissionStatusIndicator = async () => {
+      // Don't update status indicator while permissions are loading
+      if (permissionTableLoading) {
+        return;
+      }
+      
       setPermissionStatusIndicator ({
         status: "success",
         message: "Ok."
@@ -1344,7 +1411,7 @@ function AddPermissionPage() {
     getLastPermissionUpdate()
     checkPermissionStatusIndicator()
 
-  }, [permissionsList]);
+  }, [permissionsList, permissionTableLoading]);
 
   useEffect(() => {
     changeStatusIndicator()
@@ -1440,13 +1507,34 @@ function AddPermissionPage() {
         </TextContent>
         <Header variant="h3">Permission Table Badges:</Header>
         <TextContent>
+          <h4>User/Group Type:</h4>
           <ul>
             <li><Badge color="blue">User</Badge> - QuickSight user account</li>
             <li><Badge color="green">Group</Badge> - QuickSight group</li>
-            <li><Badge color="severity-neutral">* (All fields)</Badge> - Permission applies to all fields (wildcard)</li>
-            <li><Badge color="severity-neutral">* (All values)</Badge> - User/group can see all values (wildcard)</li>
+          </ul>
+          
+          <h4>Field/Value Wildcards:</h4>
+          <ul>
+            <li><Badge color="severity-neutral">* (All Fields)</Badge> - Permission applies to all fields in the dataset</li>
+            <li><Badge color="severity-neutral">* (All Values)</Badge> - User/group can see all values for that field</li>
+          </ul>
+          
+          <h4>Permission Status:</h4>
+          <ul>
+            <li><Badge color="green">Published</Badge> - Permission is saved in database AND applied to QuickSight</li>
+            <li><Badge color="blue">Pending</Badge> - Permission is saved in database but NOT yet published to QuickSight. Click "Publish RLS in QuickSight" to apply it.</li>
+            <li><Badge color="red">Failed</Badge> - Last publish attempt failed. Check logs and try publishing again.</li>
           </ul>
         </TextContent>
+        <Header variant="h3">RLS Dataset Visibility Badges:</Header>
+        <TextContent>
+          <ul>
+            <li><Badge color="green">Synced</Badge> - Stored in database and applied to QuickSight</li>
+            <li><Badge color="severity-low">QuickSight only</Badge> - Exists in QuickSight but not in our database (will be synced on save)</li>
+            <li><Badge color="blue">New</Badge> - Added but not yet saved (click "Save & Apply" to persist)</li>
+          </ul>
+        </TextContent>
+        
         <Header variant="h3">Row Level Security Rules:</Header>
         <TextContent>
           <ul>
@@ -1837,7 +1925,6 @@ function AddPermissionPage() {
           <Container
             header={
               <Header
-                description={!getSelectedDatasetDetails()?.isRls ? <StatusIndicator type={permissionStatusIndicator.status as StatusIndicatorProps.Type}>{permissionStatusIndicator.message}</StatusIndicator> : undefined}
                 variant="h2"
                 actions={
                   !getSelectedDatasetDetails()?.isRls ? (
@@ -1930,6 +2017,18 @@ function AddPermissionPage() {
                 }
                 return (
                   <>
+                    {permissionStatusIndicator.status === 'error' && (
+                      <Alert type="error" header="Configuration Error">
+                        {permissionStatusIndicator.message}
+                      </Alert>
+                    )}
+                    
+                    {permissionStatusIndicator.status === 'warning' && (
+                      <Alert type="warning" header="Action Required">
+                        {permissionStatusIndicator.message}
+                      </Alert>
+                    )}
+                    
                     <TextContent><p>Anyone whom you shared your dashboard with can see all the data in it, unless the dataset is restricted by dataset rules.</p><p>"<strong>*</strong>" is the wildcard.</p></TextContent>
                     <Table
                 trackBy="permissionId"
@@ -1970,6 +2069,8 @@ function AddPermissionPage() {
                     values: permission.rlsValues,
                     permissionId: permission.id,
                     createdAt: permission.createdAt,
+                    status: permission.status,
+                    lastPublishedAt: permission.lastPublishedAt,
                     children: []
                   });
                   
@@ -2101,15 +2202,14 @@ function AddPermissionPage() {
                         return null;
                       }
                       
-                      // Check if created in the last 5 minutes
-                      const createdDate = new Date(item.createdAt);
-                      const now = new Date();
-                      const diffMinutes = (now.getTime() - createdDate.getTime()) / (1000 * 60);
-                      
-                      if (diffMinutes < 5) {
-                        return <Badge color="blue">New</Badge>;
+                      // Show status based on publish state
+                      if (item.status === 'PUBLISHED') {
+                        return <Badge color="green">Published</Badge>;
+                      } else if (item.status === 'FAILED') {
+                        return <Badge color="red">Failed</Badge>;
                       } else {
-                        return <Badge color="green">Saved</Badge>;
+                        // PENDING or no status (legacy)
+                        return <Badge color="blue">Pending</Badge>;
                       }
                     }
                   },
@@ -2875,6 +2975,58 @@ function AddPermissionPage() {
                 }
               />
             </Container>
+          </SpaceBetween>
+        </Modal>
+
+        {/* Publish RLS Progress Modal */}
+        <Modal
+          visible={publishModalVisible}
+          onDismiss={() => {
+            if (publishComplete) {
+              setPublishModalVisible(false);
+            }
+          }}
+          header="Publishing RLS to QuickSight"
+          size="large"
+          footer={
+            publishComplete ? (
+              <Box float="right">
+                <Button 
+                  variant="primary" 
+                  onClick={() => setPublishModalVisible(false)}
+                >
+                  OK
+                </Button>
+              </Box>
+            ) : null
+          }
+        >
+          <SpaceBetween size="l">
+            {!publishComplete && (
+              <Alert type="info" header="Publishing in progress">
+                Please wait while we publish your RLS permissions to QuickSight. This may take a few moments.
+              </Alert>
+            )}
+
+            {publishComplete && !publishHasErrors && errorsCount === 0 && warningsCount === 0 && (
+              <Alert type="success" header="Success">
+                RLS permissions have been published successfully to QuickSight!
+              </Alert>
+            )}
+
+            {publishComplete && (publishHasErrors || errorsCount > 0 || warningsCount > 0) && (
+              <Alert type="error" header="Completed with issues">
+                The publish operation completed but there were {errorsCount > 0 ? `${errorsCount} error(s)` : ''} {errorsCount > 0 && warningsCount > 0 ? 'and' : ''} {warningsCount > 0 ? `${warningsCount} warning(s)` : ''}. 
+                Please check the logs in the "Status and Logs" section below for details.
+              </Alert>
+            )}
+
+            <Steps 
+              steps={getStepsForAction().map(step => ({
+                ...step,
+                statusIconAriaLabel: step.status
+              }))}
+            />
           </SpaceBetween>
         </Modal>
 

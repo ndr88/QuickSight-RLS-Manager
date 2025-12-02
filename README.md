@@ -77,6 +77,22 @@ Then the other resources will depend of the choices you made.
 
 ![Architecture](Guide/images/RLS-Tool-Architecture.png)
 
+## Known Issues
+
+### QuickSight New Data Prep Experience Limitations
+
+When using datasets created with QuickSight's new data prep experience, there are API limitations that affect RLS management:
+
+**Issue with Date Type Transformations:**
+- If you create a transformation node to change a field's data type to date, you cannot add RLS to that dataset via API
+- If a dataset already has RLS applied via API, you cannot create a transformation node to change a field's data type to date in the QuickSight UI
+
+**Workaround:**
+- Apply date type transformations before adding RLS to the dataset
+- If you need to modify date transformations on a dataset with RLS, you must first remove the RLS, make the changes, then re-apply RLS
+
+This is a known limitation of the QuickSight API when working with the new data prep experience and affects the `CastColumnTypesStep` operations in the `DataPrepConfiguration.TransformStepMap`.
+
 ## Guide
 
 A step-by-step guide is available here: [read the Guide](/Guide/TheGuide.md)

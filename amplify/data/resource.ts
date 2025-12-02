@@ -161,6 +161,8 @@ const schema = a.schema({
       userGroup: a.belongsTo('UserGroup', 'userGroupArn'), // Model name and foreign key field
       field: a.string().required(), // Field name
       rlsValues: a.string().required(), // Comma-separated list of RLS values
+      status: a.enum(['PENDING', 'PUBLISHED', 'FAILED']), // Status of the permission: PENDING (not yet published), PUBLISHED (applied to QuickSight), FAILED (publish failed)
+      lastPublishedAt: a.datetime(), // When it was last successfully published to QuickSight
       createdAt: a.datetime(),
       updatedAt: a.datetime()
     })

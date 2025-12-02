@@ -39,6 +39,20 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
 
     if (dataSetInfoResponse && dataSetInfoResponse.Status === 200 && dataSetInfoResponse.DataSet) {
       const dataSetToSecure = dataSetInfoResponse.DataSet;
+      
+      // Log the complete dataset structure (sanitized)
+      logger.debug('Complete DataSet structure', {
+        dataSetId: dataSetToSecure.DataSetId,
+        name: dataSetToSecure.Name,
+        importMode: dataSetToSecure.ImportMode,
+        hasPhysicalTableMap: !!dataSetToSecure.PhysicalTableMap,
+        hasLogicalTableMap: !!dataSetToSecure.LogicalTableMap,
+        hasDataPrepConfiguration: !!dataSetToSecure.DataPrepConfiguration,
+        hasSemanticModelConfiguration: !!dataSetToSecure.SemanticModelConfiguration,
+        physicalTableMapKeys: dataSetToSecure.PhysicalTableMap ? Object.keys(dataSetToSecure.PhysicalTableMap) : [],
+        dataPrepConfigKeys: dataSetToSecure.DataPrepConfiguration ? Object.keys(dataSetToSecure.DataPrepConfiguration) : [],
+        semanticModelTableKeys: dataSetToSecure.SemanticModelConfiguration?.TableMap ? Object.keys(dataSetToSecure.SemanticModelConfiguration.TableMap) : []
+      });
 
       // Check if RLS is already configured (check both legacy and new data prep locations)
       let existingRlsArn: string | undefined;
@@ -105,7 +119,6 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
         AwsAccountId: accountId,
         DataSetId: dataSetToSecure.DataSetId,
         Name: dataSetToSecure.Name,
-        PhysicalTableMap: dataSetToSecure.PhysicalTableMap,
         ImportMode: dataSetToSecure.ImportMode,
       };
 
@@ -113,6 +126,21 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
         // NEW DATA PREP: RLS goes inside SemanticModelConfiguration
         logger.info('Using new data prep RLS configuration');
         
+        // Log what we have
+        logger.debug('DataSet structure', {
+          hasPhysicalTableMap: !!dataSetToSecure.PhysicalTableMap,
+          hasDataPrepConfiguration: !!dataSetToSecure.DataPrepConfiguration,
+          hasSemanticModelConfiguration: !!dataSetToSecure.SemanticModelConfiguration,
+          physicalTableMapKeys: dataSetToSecure.PhysicalTableMap ? Object.keys(dataSetToSecure.PhysicalTableMap) : [],
+          physicalTableMapContent: JSON.stringify(dataSetToSecure.PhysicalTableMap)
+        });
+        
+        // Try including PhysicalTableMap EXACTLY as returned (with empty objects)
+        // QuickSight returns it as {"key": {}} and maybe it expects it back the same way
+        logger.info('Including PhysicalTableMap exactly as returned (with empty objects)');
+        updateParams.PhysicalTableMap = dataSetToSecure.PhysicalTableMap;
+        
+        // Include DataPrepConfiguration (required for new data prep)
         updateParams.DataPrepConfiguration = dataSetToSecure.DataPrepConfiguration;
         
         // Clone SemanticModelConfiguration and add RLS to each table
@@ -133,9 +161,32 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
         }
         
         updateParams.SemanticModelConfiguration = semanticModelConfig;
+        
+        // Include other optional fields if they exist
+        if (dataSetToSecure.FieldFolders) {
+          updateParams.FieldFolders = dataSetToSecure.FieldFolders;
+        }
+        if (dataSetToSecure.DataSetUsageConfiguration) {
+          updateParams.DataSetUsageConfiguration = dataSetToSecure.DataSetUsageConfiguration;
+        }
+        if (dataSetToSecure.DatasetParameters) {
+          updateParams.DatasetParameters = dataSetToSecure.DatasetParameters;
+        }
+        if (dataSetToSecure.ColumnLevelPermissionRules) {
+          updateParams.ColumnLevelPermissionRules = dataSetToSecure.ColumnLevelPermissionRules;
+        }
+        if (dataSetToSecure.ColumnGroups) {
+          updateParams.ColumnGroups = dataSetToSecure.ColumnGroups;
+        }
+        if (dataSetToSecure.RowLevelPermissionTagConfiguration) {
+          updateParams.RowLevelPermissionTagConfiguration = dataSetToSecure.RowLevelPermissionTagConfiguration;
+        }
       } else {
         // LEGACY DATA PREP: RLS at top level
+        // Include PhysicalTableMap for legacy data prep
         logger.info('Using legacy data prep RLS configuration');
+        
+        updateParams.PhysicalTableMap = dataSetToSecure.PhysicalTableMap;
         
         if (dataSetToSecure.LogicalTableMap) {
           updateParams.LogicalTableMap = dataSetToSecure.LogicalTableMap;
@@ -153,6 +204,21 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
       if (dataSetToSecure.RowLevelPermissionTagConfiguration) {
         updateParams.RowLevelPermissionTagConfiguration = dataSetToSecure.RowLevelPermissionTagConfiguration;
       }
+
+      // Log the update params (without sensitive data)
+      logger.debug('Update params structure', {
+        hasPhysicalTableMap: !!updateParams.PhysicalTableMap,
+        hasDataPrepConfiguration: !!updateParams.DataPrepConfiguration,
+        hasSemanticModelConfiguration: !!updateParams.SemanticModelConfiguration,
+        hasLogicalTableMap: !!updateParams.LogicalTableMap,
+        importMode: updateParams.ImportMode,
+        isNewDataPrep
+      });
+      
+      // Log the complete update params (this will be large but necessary for debugging)
+      logger.debug('Complete update params', {
+        updateParams: JSON.stringify(updateParams, null, 2)
+      });
 
       const updateDataSetCommand = new UpdateDataSetCommand(updateParams);
 

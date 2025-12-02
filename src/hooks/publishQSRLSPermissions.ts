@@ -509,7 +509,7 @@ export const publishQSRLSPermissions = async ({
     }
 
     if( ! create ){
-      addLog('RLS DataSet ' + rlsDataSetId + ' already exists. Updating it.', "WARNING")
+      addLog('RLS DataSet ' + rlsDataSetId + ' already exists. Updating it.', "INFO")
 
       const updateRLSDataSetResponse = await client.models.DataSet.update({
         dataSetArn: rlsDataSetId,
