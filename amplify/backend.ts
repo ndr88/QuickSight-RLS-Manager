@@ -26,6 +26,8 @@ import { removeRLSDataSet } from "./functions/removeRLSDataSet/resources"
 import { deleteDataSetFromQS } from "./functions/deleteDataSetFromQS/resources"
 import { deleteDataSetGlueTable } from "./functions/deleteDataSetGlueTable/resources"
 import { deleteDataSetS3Objects } from "./functions/deleteDataSetS3Objects/resources"
+import { updateRLSDataSetPermissions } from "./functions/updateRLSDataSetPermissions/resources"
+import { fetchRLSDataSetPermissions } from "./functions/fetchRLSDataSetPermissions/resources"
 
 // Define Backend
 const backend = defineBackend({
@@ -54,7 +56,9 @@ const backend = defineBackend({
   removeRLSDataSet,
   deleteDataSetFromQS,
   deleteDataSetGlueTable,
-  deleteDataSetS3Objects
+  deleteDataSetS3Objects,
+  updateRLSDataSetPermissions,
+  fetchRLSDataSetPermissions
 });
 
 /**
@@ -94,6 +98,8 @@ backend.removeRLSDataSet.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 backend.deleteDataSetFromQS.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 backend.deleteDataSetGlueTable.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 backend.deleteDataSetS3Objects.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
+backend.updateRLSDataSetPermissions.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
+backend.fetchRLSDataSetPermissions.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 
 /** 
  * ---- Log Level Variable ----
@@ -124,6 +130,8 @@ backend.removeRLSDataSet.addEnvironment('LOG_LEVEL', LOG_LEVEL);
 backend.deleteDataSetFromQS.addEnvironment('LOG_LEVEL', LOG_LEVEL);
 backend.deleteDataSetGlueTable.addEnvironment('LOG_LEVEL', LOG_LEVEL);
 backend.deleteDataSetS3Objects.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.updateRLSDataSetPermissions.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.fetchRLSDataSetPermissions.addEnvironment('LOG_LEVEL', LOG_LEVEL);
 
 /**
  * ---- Lambda: publishRLS00ResourcesValidation
@@ -306,6 +314,33 @@ const deleteDataSetS3Objects_Policy = new iam.PolicyStatement({
   ],
 });
 backend.deleteDataSetS3Objects.resources.lambda.addToRolePolicy(deleteDataSetS3Objects_Policy)
+
+/**
+ * ---- Lambda: updateRLSDataSetPermissions
+ * UpdateDataSetPermissionsCommand, DescribeDataSetPermissionsCommand
+ */
+const updateRLSDataSetPermissions_Policy = new iam.PolicyStatement({
+  sid: "updateRLSDataSetPermissionsPolicy",
+  actions: [
+    "quicksight:DescribeDataSetPermissions",
+    "quicksight:UpdateDataSetPermissions"
+  ],
+  resources: ["*"]
+});
+backend.updateRLSDataSetPermissions.resources.lambda.addToRolePolicy(updateRLSDataSetPermissions_Policy)
+
+/**
+ * ---- Lambda: fetchRLSDataSetPermissions
+ * DescribeDataSetPermissionsCommand
+ */
+const fetchRLSDataSetPermissions_Policy = new iam.PolicyStatement({
+  sid: "fetchRLSDataSetPermissionsPolicy",
+  actions: [
+    "quicksight:DescribeDataSetPermissions"
+  ],
+  resources: ["*"]
+});
+backend.fetchRLSDataSetPermissions.resources.lambda.addToRolePolicy(fetchRLSDataSetPermissions_Policy)
 
 /**
  * ---- S3 ----

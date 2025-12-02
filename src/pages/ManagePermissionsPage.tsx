@@ -89,6 +89,7 @@ interface PermissionItem {
   field: string;
   values: string;
   permissionId: string;
+  createdAt?: string;
   children?: PermissionItem[];
 }
 
@@ -179,6 +180,15 @@ function AddPermissionPage() {
 
   // Last Updated
   const [ permissionLastUpdate, setPermissionLastUpdate ] = useState<Date>(new Date(0))
+
+  // RLS Dataset Visibility Management
+  const [rlsVisibilityModalVisible, setRlsVisibilityModalVisible] = useState<boolean>(false);
+  const [rlsVisibilityList, setRlsVisibilityList] = useState<any[]>([]);
+  const [selectedVisibilityType, setSelectedVisibilityType] = useState<SelectOption | null>(null);
+  const [selectedVisibilityUserGroup, setSelectedVisibilityUserGroup] = useState<SelectOption | null>(null);
+  const [selectedPermissionLevel, setSelectedPermissionLevel] = useState<SelectOption | null>(null);
+  const [visibilityUserGroupOptions, setVisibilityUserGroupOptions] = useState<SelectOption[]>([]);
+  const [savingVisibility, setSavingVisibility] = useState<boolean>(false);
 
   /**
    * Add Log to output text area
@@ -641,6 +651,185 @@ function AddPermissionPage() {
     }
   
   }
+
+  /**
+   * RLS Dataset Visibility Management Functions
+   */
+  const openRLSVisibilityModal = async () => {
+    if (!selectedDataset?.dataSetArn) return;
+    
+    // Fetch current visibility from database
+    await fetchRLSVisibility();
+    setRlsVisibilityModalVisible(true);
+  };
+
+  const fetchRLSVisibility = async () => {
+    if (!selectedDataset?.dataSetArn || !selectedDataset?.rlsDataSetId || !selectedRegion) return;
+    
+    try {
+      // Fetch from database
+      const dbResponse = await client.models.RLSDataSetVisibility.list({
+        filter: {
+          dataSetArn: {
+            eq: selectedDataset.dataSetArn
+          }
+        }
+      });
+      
+      // Fetch actual permissions from QuickSight
+      const rlsDataSetIdOnly = selectedDataset.rlsDataSetId.split('/').pop() || selectedDataset.rlsDataSetId;
+      
+      const qsResponse = await client.queries.fetchRLSDataSetPermissions({
+        region: selectedRegion.value,
+        rlsDataSetId: rlsDataSetIdOnly
+      });
+      
+      let qsPermissions: any[] = [];
+      if (qsResponse.data?.statusCode === 200 && qsResponse.data?.permissions) {
+        qsPermissions = JSON.parse(qsResponse.data.permissions);
+      }
+      
+      // Map QuickSight permissions to our format
+      const OWNER_ACTIONS_SET = new Set([
+        "quicksight:DeleteDataSet",
+        "quicksight:UpdateDataSetPermissions",
+        "quicksight:UpdateDataSet"
+      ]);
+      
+      const qsPermissionsList = qsPermissions.map((perm: any) => {
+        // Determine permission level based on actions
+        const hasOwnerActions = perm.Actions?.some((action: string) => OWNER_ACTIONS_SET.has(action));
+        const permissionLevel = hasOwnerActions ? 'OWNER' : 'VIEWER';
+        
+        const userGroupName = perm.Principal?.split(':')[5]?.split('/').slice(2).join('/') || '';
+        const userGroupType = perm.Principal?.split(':')[5]?.split('/')[0].toUpperCase() || '';
+        
+        // Check if this permission exists in our database
+        const dbRecord = dbResponse.data.find(item => item.userGroupArn === perm.Principal);
+        
+        return {
+          id: dbRecord?.id || `qs-${perm.Principal}`,
+          rlsDataSetArn: selectedDataset.rlsDataSetId,
+          dataSetArn: selectedDataset.dataSetArn,
+          userGroupArn: perm.Principal,
+          permissionLevel: dbRecord?.permissionLevel || permissionLevel,
+          name: userGroupName,
+          userGroupType: userGroupType,
+          fromQuickSight: !dbRecord, // Flag to indicate this came from QS, not our DB
+          createdAt: dbRecord?.createdAt,
+          updatedAt: dbRecord?.updatedAt
+        };
+      });
+      
+      setRlsVisibilityList(qsPermissionsList);
+      
+    } catch (error) {
+      console.error('Error fetching RLS visibility:', error);
+      alert('Error fetching visibility permissions: ' + error);
+    }
+  };
+
+  const addVisibility = () => {
+    if (!selectedVisibilityUserGroup || !selectedPermissionLevel) return;
+    
+    // Check if already exists
+    const exists = rlsVisibilityList.some(
+      item => item.userGroupArn === selectedVisibilityUserGroup.value
+    );
+    
+    if (exists) {
+      alert('This user/group already has visibility configured');
+      return;
+    }
+    
+    // Add to local state
+    const newItem = {
+      id: `temp-${Date.now()}`,
+      rlsDataSetArn: selectedDataset?.rlsDataSetId || '',
+      dataSetArn: selectedDataset?.dataSetArn || '',
+      userGroupArn: selectedVisibilityUserGroup.value,
+      permissionLevel: selectedPermissionLevel.value,
+      name: selectedVisibilityUserGroup.label,
+      userGroupType: selectedVisibilityType?.value.toUpperCase() || '',
+      isNew: true
+    };
+    
+    setRlsVisibilityList([...rlsVisibilityList, newItem]);
+    
+    // Reset form
+    setSelectedVisibilityUserGroup(null);
+    setSelectedPermissionLevel(null);
+  };
+
+  const removeVisibility = (id: string) => {
+    setRlsVisibilityList(rlsVisibilityList.filter(item => item.id !== id));
+  };
+
+  const saveAndApplyVisibility = async () => {
+    if (!selectedDataset?.rlsDataSetId || !selectedRegion) return;
+    
+    setSavingVisibility(true);
+    
+    try {
+      // Get current records from database
+      const currentRecords = await client.models.RLSDataSetVisibility.list({
+        filter: {
+          dataSetArn: {
+            eq: selectedDataset.dataSetArn
+          }
+        }
+      });
+      
+      // Delete records that are not in the new list
+      for (const record of currentRecords.data) {
+        const stillExists = rlsVisibilityList.some(item => item.id === record.id);
+        if (!stillExists) {
+          await client.models.RLSDataSetVisibility.delete({ id: record.id });
+        }
+      }
+      
+      // Create or update records
+      for (const item of rlsVisibilityList) {
+        // Create new records (either new additions or items from QuickSight not in our DB)
+        if (item.isNew || item.fromQuickSight) {
+          await client.models.RLSDataSetVisibility.create({
+            rlsDataSetArn: selectedDataset.rlsDataSetId,
+            dataSetArn: selectedDataset.dataSetArn,
+            userGroupArn: item.userGroupArn,
+            permissionLevel: item.permissionLevel
+          });
+        }
+      }
+      
+      // Apply permissions to QuickSight
+      const permissions = rlsVisibilityList.map(item => ({
+        userGroupArn: item.userGroupArn,
+        permissionLevel: item.permissionLevel
+      }));
+      
+      const rlsDataSetIdOnly = selectedDataset.rlsDataSetId.split('/').pop() || selectedDataset.rlsDataSetId;
+      
+      const updateResponse = await client.queries.updateRLSDataSetPermissions({
+        region: selectedRegion.value,
+        rlsDataSetId: rlsDataSetIdOnly,
+        permissions: JSON.stringify(permissions)
+      });
+      
+      if (updateResponse.data?.statusCode === 200) {
+        alert('RLS Dataset visibility updated successfully!');
+        setRlsVisibilityModalVisible(false);
+      } else {
+        alert('Failed to update QuickSight permissions: ' + updateResponse.data?.message);
+      }
+      
+    } catch (error) {
+      console.error('Error saving visibility:', error);
+      alert('Error saving visibility: ' + error);
+    } finally {
+      setSavingVisibility(false);
+    }
+  };
+
   /**
    * Define the function that will be used to change status of the Status and Logs container
    */
@@ -820,12 +1009,21 @@ function AddPermissionPage() {
             </li>
           </ul>
         </TextContent>
+        <Header variant="h3">Permission Table Badges:</Header>
+        <TextContent>
+          <ul>
+            <li><Badge color="blue">User</Badge> - QuickSight user account</li>
+            <li><Badge color="green">Group</Badge> - QuickSight group</li>
+            <li><Badge color="severity-neutral">* (All fields)</Badge> - Permission applies to all fields (wildcard)</li>
+            <li><Badge color="severity-neutral">* (All values)</Badge> - User/group can see all values (wildcard)</li>
+          </ul>
+        </TextContent>
         <Header variant="h3">Row Level Security Rules:</Header>
         <TextContent>
           <ul>
             <li><strong>Anyone whom you shared your dashboard with can see all the data in it, unless the dataset is restricted by dataset rules.</strong></li>
             <li>Each user or group specified can see only the rows that match the field values in the dataset rules.</li>
-            <li>f you add a rule for a user or group and leave all other columns with no value <i>(NULL)</i>, you grant them access to all the data.</li>
+            <li>If you add a rule for a user or group and leave all other columns with no value <i>(NULL)</i>, you grant them access to all the data.</li>
             <li>If you don't add a rule for a user or group, that user or group can't see any of the data.</li>
             <li>The full set of rule records that are applied per user must not exceed 999. This limitation applies to the total number of rules that are directly assigned to a username, plus any rules that are assigned to the user through group names.</li>
           </ul>
@@ -856,6 +1054,23 @@ function AddPermissionPage() {
       setFormDataSetSelectDisabled(false)
     }
   }, [searchParams]);
+
+  // Update visibility user/group options when type changes
+  useEffect(() => {
+    if (!selectedVisibilityType) {
+      setVisibilityUserGroupOptions([]);
+      return;
+    }
+    
+    const sourceList = selectedVisibilityType.value === 'user' ? users : groups;
+    const options = sourceList.map(item => ({
+      label: item.name,
+      value: item.userGroupArn
+    }));
+    
+    setVisibilityUserGroupOptions(options);
+    setSelectedVisibilityUserGroup(null);
+  }, [selectedVisibilityType, users, groups]);
 
   return (
     <>
@@ -1221,6 +1436,13 @@ function AddPermissionPage() {
                       <Icon name="thumbs-up"/>
                       <> Publish RLS in QuickSight</>
                     </Button>
+                    <Button
+                      onClick={() => openRLSVisibilityModal()}
+                      disabled={!selectedDataset?.rlsToolManaged || !selectedDataset?.rlsDataSetId}
+                      iconName="share"
+                    >
+                      Manage RLS Dataset Visibility
+                    </Button>
                     
                   </SpaceBetween>
                   ) : undefined
@@ -1283,6 +1505,7 @@ function AddPermissionPage() {
                     field: permission.field,
                     values: permission.rlsValues,
                     permissionId: permission.id,
+                    createdAt: permission.createdAt,
                     children: []
                   });
                   
@@ -1308,6 +1531,7 @@ function AddPermissionPage() {
                       field: item.field,
                       values: item.values,
                       permissionId: item.permissionId,
+                      createdAt: item.createdAt,
                       children: []
                     }))
                   };
@@ -1322,20 +1546,53 @@ function AddPermissionPage() {
                     { id: "arn", visible: false },
                     { id: "field", visible: true },
                     { id: "values", visible: true },
+                    { id: "status", visible: true },
                     { id: "permissionId", visible: false },
                     { id: "delete", visible: true},
                   ]
                 }
                 columnDefinitions={[
-                  { id: "permissionId", header: "Permission ID", cell: (item: any) => item.permissionId, },
-                  { id: "userGroup", header: "User/Group", cell: (item: any) => item.userGroup, },
-                  { id: "name", header: "Resource Name", cell: (item: any) => item.name, },
-                  { id: "arn", header: "Resource ARN", cell: (item: any) => item.arn, },
-                  { id: "field", header: "Field", cell: (item: any) => item.field, },
+                  { 
+                    id: "permissionId", 
+                    header: "Permission ID", 
+                    cell: (item: any) => item.permissionId,
+                  },
+                  { 
+                    id: "userGroup", 
+                    header: "Type", 
+                    cell: (item: any) => {
+                      if (item.userGroup === '-') return '-';
+                      return (
+                        <Badge color={item.userGroup === "USER" ? "blue" : "green"}>
+                          {item.userGroup === "USER" ? "User" : "Group"}
+                        </Badge>
+                      );
+                    }
+                  },
+                  { 
+                    id: "name", 
+                    header: "Name", 
+                    cell: (item: any) => item.name,
+                  },
+                  { 
+                    id: "arn", 
+                    header: "ARN", 
+                    cell: (item: any) => item.arn,
+                  },
+                  { 
+                    id: "field", 
+                    header: "Field", 
+                    cell: (item: any) => item.field === "*" ? (
+                      <Badge color="severity-neutral">* (All fields)</Badge>
+                    ) : item.field,
+                  },
                   {
                     id: "values",
                     header: "Values",
                     cell: item => {
+                      if (item.values === "*") {
+                        return <Badge color="severity-neutral">* (All values)</Badge>;
+                      }
                       return item.values;
                     },
                     
@@ -1370,6 +1627,26 @@ function AddPermissionPage() {
                           />
                         );
                       },
+                    }
+                  },
+                  {
+                    id: "status",
+                    header: "Status",
+                    cell: item => {
+                      if (!item.createdAt || item.permissionId.startsWith("pid-")) {
+                        return null;
+                      }
+                      
+                      // Check if created in the last 5 minutes
+                      const createdDate = new Date(item.createdAt);
+                      const now = new Date();
+                      const diffMinutes = (now.getTime() - createdDate.getTime()) / (1000 * 60);
+                      
+                      if (diffMinutes < 5) {
+                        return <Badge color="blue">New</Badge>;
+                      } else {
+                        return <Badge color="green">Saved</Badge>;
+                      }
                     }
                   },
                   {
@@ -1836,6 +2113,161 @@ function AddPermissionPage() {
           </SpaceBetween>
 
         </Modal>
+
+        {/* RLS Dataset Visibility Modal */}
+        <Modal
+          visible={rlsVisibilityModalVisible}
+          onDismiss={() => setRlsVisibilityModalVisible(false)}
+          header="Manage RLS Dataset Visibility"
+          size="large"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button variant="link" onClick={() => setRlsVisibilityModalVisible(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  variant="primary" 
+                  onClick={saveAndApplyVisibility}
+                  loading={savingVisibility}
+                >
+                  Save & Apply to QuickSight
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="l">
+            <Alert type="info">
+              Control who can see and manage this RLS Dataset in QuickSight.
+              <ul>
+                <li><strong>Owner</strong>: Full control (view, edit, delete, manage permissions)</li>
+                <li><strong>Viewer</strong>: Read-only access (view dataset details and refresh status)</li>
+              </ul>
+              <strong>Status indicators:</strong>
+              <ul>
+                <li><Badge color="green">Synced</Badge> - Stored in database and applied to QuickSight</li>
+                <li><Badge color="severity-low">QuickSight only</Badge> - Exists in QuickSight but not in our database (will be synced on save)</li>
+                <li><Badge color="blue">New</Badge> - Added but not yet saved (click "Save & Apply" to persist)</li>
+              </ul>
+            </Alert>
+
+            <Container header={<Header variant="h3">Current Visibility</Header>}>
+              <Table
+                items={rlsVisibilityList}
+                sortingDisabled={false}
+                columnDefinitions={[
+                  {
+                    id: "type",
+                    header: "Type",
+                    sortingField: "userGroupType",
+                    cell: item => (
+                      <Badge color={item.userGroupType === "USER" ? "blue" : "green"}>
+                        {item.userGroupType === "USER" ? "User" : "Group"}
+                      </Badge>
+                    )
+                  },
+                  {
+                    id: "name",
+                    header: "Name",
+                    sortingField: "name",
+                    cell: item => item.name
+                  },
+                  {
+                    id: "permissionLevel",
+                    header: "Permission Level",
+                    sortingField: "permissionLevel",
+                    cell: item => (
+                      <Badge color={item.permissionLevel === "OWNER" ? "blue" : "green"}>
+                        {item.permissionLevel}
+                      </Badge>
+                    )
+                  },
+                  {
+                    id: "status",
+                    header: "Status",
+                    cell: item => {
+                      if (item.isNew) {
+                        return <Badge color="blue">New</Badge>;
+                      } else if (item.fromQuickSight) {
+                        return <Badge color="severity-low">QuickSight only</Badge>;
+                      } else {
+                        return <Badge color="green">Synced</Badge>;
+                      }
+                    }
+                  },
+                  {
+                    id: "actions",
+                    header: "Actions",
+                    cell: item => (
+                      <Button
+                        variant="icon"
+                        iconName="remove"
+                        onClick={() => removeVisibility(item.id)}
+                      />
+                    )
+                  }
+                ]}
+                empty={
+                  <Box textAlign="center" color="inherit">
+                    <b>No visibility configured</b>
+                    <Box variant="p" color="inherit">
+                      Add users or groups below to grant access to this RLS dataset.
+                    </Box>
+                  </Box>
+                }
+              />
+            </Container>
+
+            <Container header={<Header variant="h3">Add Visibility</Header>}>
+              <SpaceBetween size="m">
+                <FormField label="User or Group Type">
+                  <Select
+                    selectedOption={selectedVisibilityType}
+                    onChange={({ detail }) => setSelectedVisibilityType(detail.selectedOption as SelectOption)}
+                    options={[
+                      { label: "User", value: "user" },
+                      { label: "Group", value: "group" }
+                    ]}
+                    placeholder="Select type"
+                  />
+                </FormField>
+
+                <FormField label="Select User/Group">
+                  <Select
+                    selectedOption={selectedVisibilityUserGroup}
+                    onChange={({ detail }) => setSelectedVisibilityUserGroup(detail.selectedOption as SelectOption)}
+                    options={visibilityUserGroupOptions}
+                    placeholder="Choose a user or group"
+                    filteringType="auto"
+                    disabled={!selectedVisibilityType}
+                  />
+                </FormField>
+
+                <FormField label="Permission Level">
+                  <Select
+                    selectedOption={selectedPermissionLevel}
+                    onChange={({ detail }) => setSelectedPermissionLevel(detail.selectedOption as SelectOption)}
+                    options={[
+                      { label: "Owner - Full control", value: "OWNER" },
+                      { label: "Viewer - Read-only", value: "VIEWER" }
+                    ]}
+                    placeholder="Select permission level"
+                  />
+                </FormField>
+
+                <Button
+                  onClick={addVisibility}
+                  disabled={!selectedVisibilityUserGroup || !selectedPermissionLevel}
+                  iconName="add-plus"
+                >
+                  Add
+                </Button>
+              </SpaceBetween>
+            </Container>
+          </SpaceBetween>
+        </Modal>
+
       </ContentLayout>
     </>
 

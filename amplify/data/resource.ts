@@ -26,6 +26,8 @@ import { removeRLSDataSet } from "../functions/removeRLSDataSet/resources"
 import { deleteDataSetFromQS } from "../functions/deleteDataSetFromQS/resources"
 import { deleteDataSetGlueTable } from "../functions/deleteDataSetGlueTable/resources"
 import { deleteDataSetS3Objects } from "../functions/deleteDataSetS3Objects/resources"
+import { updateRLSDataSetPermissions } from "../functions/updateRLSDataSetPermissions/resources"
+import { fetchRLSDataSetPermissions } from "../functions/fetchRLSDataSetPermissions/resources"
 
 const UserGroupType = {
   User: 'User',
@@ -35,6 +37,11 @@ const UserGroupType = {
 const rlsStatus = {
   ENABLED: 'ENABLED',
   DISABLED: 'DISABLED'
+} as const;
+
+const PermissionLevel = {
+  OWNER: 'OWNER',
+  VIEWER: 'VIEWER'
 } as const;
 
 const FunctionResponseType = a.customType({
@@ -119,6 +126,7 @@ const schema = a.schema({
       lastUpdatedTime: a.string(), 
       fields: a.string().array(),
       permissions: a.hasMany('Permission', 'dataSetArn'),
+      rlsVisibility: a.hasMany('RLSDataSetVisibility', 'dataSetArn'),
       createdAt: a.datetime(),
       updatedAt: a.datetime()
     })
@@ -139,6 +147,7 @@ const schema = a.schema({
       principalId: a.string(), // Principal ID
       description: a.string(),
       permission: a.hasMany('Permission', 'userGroupArn'),
+      rlsVisibility: a.hasMany('RLSDataSetVisibility', 'userGroupArn'),
       createdAt: a.datetime(),
       updatedAt: a.datetime()
     })
@@ -152,6 +161,19 @@ const schema = a.schema({
       userGroup: a.belongsTo('UserGroup', 'userGroupArn'), // Model name and foreign key field
       field: a.string().required(), // Field name
       rlsValues: a.string().required(), // Comma-separated list of RLS values
+      createdAt: a.datetime(),
+      updatedAt: a.datetime()
+    })
+    .authorization((allow) => [allow.authenticated()]),
+
+  RLSDataSetVisibility: a
+    .model({
+      rlsDataSetArn: a.string().required(), // The RLS dataset ARN
+      dataSetArn: a.string().required(), // The main dataset ARN (for reference)
+      userGroupArn: a.string().required(), // User or group ARN
+      permissionLevel: a.enum(Object.values(PermissionLevel)), // OWNER or VIEWER
+      dataSet: a.belongsTo('DataSet', 'dataSetArn'),
+      userGroup: a.belongsTo('UserGroup', 'userGroupArn'),
       createdAt: a.datetime(),
       updatedAt: a.datetime()
     })
@@ -493,6 +515,36 @@ const schema = a.schema({
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(deleteDataSetS3Objects)),
 
+  updateRLSDataSetPermissions: a
+    .query()
+    .arguments({
+      region: a.string().required(),
+      rlsDataSetId: a.string().required(),
+      permissions: a.string().required(), // JSON stringified array of {userGroupArn, permissionLevel}
+    })
+    .returns(a.customType({
+      statusCode: a.integer().required(),
+      message: a.string().required(),
+      errorType: a.string(),
+    }))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(updateRLSDataSetPermissions)),
+
+  fetchRLSDataSetPermissions: a
+    .query()
+    .arguments({
+      region: a.string().required(),
+      rlsDataSetId: a.string().required(),
+    })
+    .returns(a.customType({
+      statusCode: a.integer().required(),
+      message: a.string().required(),
+      permissions: a.string().required(), // JSON stringified array
+      errorType: a.string(),
+    }))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(fetchRLSDataSetPermissions)),
+
 
 }).authorization(allow => [
   allow.resource(setAccount),
@@ -516,7 +568,9 @@ const schema = a.schema({
   allow.resource(removeRLSDataSet),
   allow.resource(deleteDataSetFromQS),
   allow.resource(deleteDataSetGlueTable),
-  allow.resource(deleteDataSetS3Objects)
+  allow.resource(deleteDataSetS3Objects),
+  allow.resource(updateRLSDataSetPermissions),
+  allow.resource(fetchRLSDataSetPermissions)
 ]);
 
 export type Schema = ClientSchema<typeof schema>;

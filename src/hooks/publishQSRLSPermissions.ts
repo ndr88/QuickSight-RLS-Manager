@@ -36,6 +36,56 @@ const enum RLSStatus {
 
 const client = generateClient<Schema>();
 
+/**
+ * Auto-apply RLS Dataset visibility permissions if configured
+ */
+const applyRLSVisibilityPermissions = async (
+  dataSetArn: string,
+  rlsDataSetArn: string,
+  region: string,
+  addLog: (log: string, type?: string, errorCode?: number, errorName?: string) => void
+): Promise<void> => {
+  try {
+    // Fetch visibility settings from database
+    const visibilityRecords = await client.models.RLSDataSetVisibility.list({
+      filter: { dataSetArn: { eq: dataSetArn } }
+    });
+    
+    if (visibilityRecords.data.length === 0) {
+      addLog("No visibility permissions configured for this RLS dataset.");
+      return;
+    }
+    
+    addLog(`Applying ${visibilityRecords.data.length} visibility permission(s) to RLS dataset...`);
+    
+    // Build permissions array
+    const permissions = visibilityRecords.data.map(record => ({
+      userGroupArn: record.userGroupArn,
+      permissionLevel: record.permissionLevel
+    }));
+    
+    // Extract RLS dataset ID from ARN
+    const rlsDataSetId = rlsDataSetArn.split('/').pop() || rlsDataSetArn;
+    
+    // Apply permissions to QuickSight
+    const updateResponse = await client.queries.updateRLSDataSetPermissions({
+      region: region,
+      rlsDataSetId: rlsDataSetId,
+      permissions: JSON.stringify(permissions)
+    });
+    
+    if (updateResponse.data?.statusCode === 200) {
+      addLog("RLS dataset visibility permissions applied successfully.");
+    } else {
+      addLog("Failed to apply visibility permissions: " + updateResponse.data?.message, "WARNING");
+    }
+    
+  } catch (error) {
+    addLog("Error applying visibility permissions: " + error, "WARNING");
+    console.error('Error applying RLS visibility permissions:', error);
+  }
+};
+
 const qsDataSetIngestionCheck = async({
   region,
   dataSetArn,
@@ -348,6 +398,10 @@ export const publishQSRLSPermissions = async ({
       }
       addLog(publishRLSStep03_QuickSight.data?.message)
       setStep("step3", StepStatus.SUCCESS)
+      
+      // Auto-apply visibility permissions if configured
+      await applyRLSVisibilityPermissions(dataSetArn, rlsDataSetArn, region, addLog);
+      
     }else if(publishRLSStep03_QuickSight && publishRLSStep03_QuickSight.data?.statusCode == 201 && publishRLSStep03_QuickSight.data?.message){
       // HTTP 201 --> RLS DataSet Creation RUNNING
       if(publishRLSStep03_QuickSight.data?.rlsDataSetArn && publishRLSStep03_QuickSight.data?.ingestionId){
@@ -375,6 +429,11 @@ export const publishQSRLSPermissions = async ({
       if(ingestionRespone && ingestionRespone.status == 200 && ingestionRespone.message){
         addLog(ingestionRespone.message)
         addLog("RLS DataSet created/updated successfully.")
+        setStep("step3", StepStatus.SUCCESS)
+        
+        // Auto-apply visibility permissions if configured
+        await applyRLSVisibilityPermissions(dataSetArn, rlsDataSetArn, region, addLog);
+        
       }else{
         setStep("step3", StepStatus.ERROR)
         return{

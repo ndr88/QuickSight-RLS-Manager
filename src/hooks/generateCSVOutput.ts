@@ -37,6 +37,27 @@ export const generateCSVOutput = async (dataSetArn: string) => {
       }
     });
     
+    // If no specific fields are defined (all permissions are "view all"), 
+    // fetch dataset fields and include all of them
+    if (uniqueFields.size === 0) {
+      console.log("No specific fields found, fetching dataset fields for 'view all' permissions");
+      
+      // Fetch the dataset to get its fields
+      const { data: dataset } = await client.models.DataSet.get({ dataSetArn });
+      
+      if (dataset && dataset.fields && dataset.fields.length > 0) {
+        // Add all dataset fields to uniqueFields
+        dataset.fields.forEach(field => {
+          if (field) {
+            uniqueFields.add(field);
+          }
+        });
+        console.log(`Added ${uniqueFields.size} dataset fields for 'view all' permissions`);
+      } else {
+        console.warn("Dataset has no fields defined, CSV will only have UserARN and GroupARN");
+      }
+    }
+    
     // Create header row
     const headerRow = ['UserARN', 'GroupARN', ...Array.from(uniqueFields)].join(',');
 
@@ -76,9 +97,16 @@ export const generateCSVOutput = async (dataSetArn: string) => {
         
       }, {} as Record<string, string>);
     
+      // Check if this user/group has "view all" permission
+      const hasViewAll = permissionGroup.some(p => p.field === "*" && p.rlsValues === "*");
+    
       // Create row with all fields
-      
       const fieldValues = Array.from(uniqueFields).map(field => {
+        // If user has "view all" permission, leave all fields empty (grants access to all values)
+        if (hasViewAll) {
+          return '';
+        }
+        
         const value = fieldValueMap[field] || '';
         if(value==="*"){
           return ""

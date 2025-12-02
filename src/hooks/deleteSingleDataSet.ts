@@ -24,6 +24,41 @@ interface FunctionManagerResult {
 
 const client = generateClient<Schema>();
 
+/**
+ * Cleanup RLS Dataset visibility records from database
+ */
+const cleanupRLSVisibilityRecords = async (
+  rlsDataSetArn: string,
+  addLog: (log: string, type?: string, errorCode?: number, errorName?: string) => void
+): Promise<void> => {
+  try {
+    addLog("Cleaning up RLS dataset visibility records...");
+    
+    // Fetch all visibility records for this RLS dataset
+    const visibilityRecords = await client.models.RLSDataSetVisibility.list({
+      filter: { rlsDataSetArn: { eq: rlsDataSetArn } }
+    });
+    
+    if (visibilityRecords.data.length === 0) {
+      addLog("No visibility records to clean up.");
+      return;
+    }
+    
+    // Delete all records
+    let deletedCount = 0;
+    for (const record of visibilityRecords.data) {
+      await client.models.RLSDataSetVisibility.delete({ id: record.id });
+      deletedCount++;
+    }
+    
+    addLog(`Cleaned up ${deletedCount} visibility record(s).`);
+    
+  } catch (error) {
+    addLog("Error cleaning up visibility records: " + error, "WARNING");
+    console.error('Error cleaning up RLS visibility records:', error);
+  }
+};
+
 export const deleteSingleDataSet = async({
   accountId,
   region,
@@ -188,6 +223,9 @@ export const deleteSingleDataSet = async({
       throw new Error(deleteResponse.data?.message);
     }else{
       addLog("RLS DataSet deleted from QS.")
+      
+      // Cleanup visibility records
+      await cleanupRLSVisibilityRecords(rlsDataSetArn, addLog);
     }
 
   }catch(e){
