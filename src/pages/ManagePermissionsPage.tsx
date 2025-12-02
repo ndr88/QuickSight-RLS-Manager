@@ -5,6 +5,7 @@ import { generateClient } from "aws-amplify/data";
 import { Badge, BreadcrumbGroup, Container, ContentLayout, CopyToClipboard, 
   FormField, Header, KeyValuePairs, Popover, Select, SpaceBetween, TextContent, Table, Input, Box, 
   Button,
+  ButtonDropdown,
   Icon,
   Modal,
   Link,
@@ -23,6 +24,7 @@ import { generateCSVOutput } from "../hooks/generateCSVOutput";
 import { CodeView } from "@cloudscape-design/code-view";
 
 import { publishQSRLSPermissions } from "../hooks/publishQSRLSPermissions"
+import { parseRLSCSV } from "../hooks/parseRLSCSV"
 
 import { StepStatus } from '../hooks/STEP_STATUS'
 import { useSearchParams } from "react-router-dom";
@@ -64,10 +66,14 @@ interface SelectedDataset {
   label: string;
   dataSetArn: string;
   dataSetId: string;
+  dataSetName: string;
+  region: string;
   fields: string[];
   rlsToolManaged: boolean; 
   rlsDataSetId: string;
   rlsEnabled: string;
+  rlsS3Key?: string;
+  rlsS3BucketName?: string;
   lastUpdatedTime: string;
 }
 
@@ -170,6 +176,59 @@ function AddPermissionPage() {
   const [errorsCount, setErrorsCount] = useState<number>(0)
   const [warningsCount, setWarningsCount] = useState<number>(0)
 
+  // Current action type for dynamic steps
+  const [currentAction, setCurrentAction] = useState<'publish' | 'import' | 'visibility' | 'remove' | 'add' | null>(null);
+
+  // Function to get dynamic steps based on action
+  const getStepsForAction = () => {
+    switch (currentAction) {
+      case 'publish':
+        return [
+          { status: step0_validating, header: "1. Validating RLS Tool Resources" },
+          { status: step1_s3, header: "2. Publishing Permissions to S3" },
+          { status: step2_glue, header: "3. Updating Glue Database" },
+          { status: step3_publishingRLS, header: "4. Updating RLS DataSet in QuickSight" },
+          { status: step4_updatingMainDataSet, header: "5. Applying RLS to Main DataSet" },
+          { status: step5_refreshingRlsTool, header: "6. Refreshing RLS Tool" }
+        ];
+      case 'import':
+        return [
+          { status: step0_validating, header: "1. Parsing CSV File" },
+          { status: step1_s3, header: "2. Validating Users/Groups" },
+          { status: step2_glue, header: "3. Importing Permissions to Database" }
+        ];
+      case 'visibility':
+        return [
+          { status: step0_validating, header: "1. Validating RLS Dataset" },
+          { status: step1_s3, header: "2. Updating Dataset Visibility" },
+          { status: step2_glue, header: "3. Refreshing Permissions" }
+        ];
+      case 'remove':
+        return [
+          { status: step0_validating, header: "1. Deleting Permissions from Database" },
+          { status: step1_s3, header: "2. Deleting S3 Folder" },
+          { status: step2_glue, header: "3. Deleting Glue Table" },
+          { status: step3_publishingRLS, header: "4. Deleting QuickSight RLS Dataset" },
+          { status: step4_updatingMainDataSet, header: "5. Removing RLS from Main Dataset" },
+          { status: step5_refreshingRlsTool, header: "6. Updating Database Record" }
+        ];
+      case 'add':
+        return [
+          { status: step0_validating, header: "1. Validating Permission Data" },
+          { status: step1_s3, header: "2. Creating Permission in Database" }
+        ];
+      default:
+        return [
+          { status: step0_validating, header: "1. Validating RLS Tool Resources" },
+          { status: step1_s3, header: "2. Publishing Permissions to S3" },
+          { status: step2_glue, header: "3. Updating Glue Database" },
+          { status: step3_publishingRLS, header: "4. Updating RLS DataSet in QuickSight" },
+          { status: step4_updatingMainDataSet, header: "5. Applying RLS to Main DataSet" },
+          { status: step5_refreshingRlsTool, header: "6. Refreshing RLS Tool" }
+        ];
+    }
+  };
+
   // Steps step5_updatingMainDataSet,
   const [step0_validating, set_step0_validating] = useState<StepStatus>(StepStatus.STOPPED)
   const [step1_s3, set_step1_s3] = useState<StepStatus>(StepStatus.STOPPED)
@@ -177,6 +236,16 @@ function AddPermissionPage() {
   const [step3_publishingRLS, set_step3_publishingRLS] = useState<StepStatus>(StepStatus.STOPPED)
   const [step4_updatingMainDataSet, set_step4_updatingMainDataSet] = useState<StepStatus>(StepStatus.STOPPED)
   const [step5_refreshingRlsTool, set_step5_refreshingRlsTool] = useState<StepStatus>(StepStatus.STOPPED)
+
+  // Helper function to reset all steps
+  const resetAllSteps = () => {
+    set_step0_validating(StepStatus.STOPPED);
+    set_step1_s3(StepStatus.STOPPED);
+    set_step2_glue(StepStatus.STOPPED);
+    set_step3_publishingRLS(StepStatus.STOPPED);
+    set_step4_updatingMainDataSet(StepStatus.STOPPED);
+    set_step5_refreshingRlsTool(StepStatus.STOPPED);
+  };
 
   // Last Updated
   const [ permissionLastUpdate, setPermissionLastUpdate ] = useState<Date>(new Date(0))
@@ -189,6 +258,20 @@ function AddPermissionPage() {
   const [selectedPermissionLevel, setSelectedPermissionLevel] = useState<SelectOption | null>(null);
   const [visibilityUserGroupOptions, setVisibilityUserGroupOptions] = useState<SelectOption[]>([]);
   const [savingVisibility, setSavingVisibility] = useState<boolean>(false);
+
+  // CSV Import
+  const [importModalVisible, setImportModalVisible] = useState<boolean>(false);
+  const [importedPermissions, setImportedPermissions] = useState<any[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [importFormat, setImportFormat] = useState<string>('');
+  const [importingPermissions, setImportingPermissions] = useState<boolean>(false);
+  const [editingImportRow, setEditingImportRow] = useState<number | null>(null);
+
+  // Remove All Permissions
+  const [removeAllModalVisible, setRemoveAllModalVisible] = useState<boolean>(false);
+  const [removeAllConfirmText, setRemoveAllConfirmText] = useState<string>('');
+  const [removingAllPermissions, setRemovingAllPermissions] = useState<boolean>(false);
 
   /**
    * Add Log to output text area
@@ -436,33 +519,58 @@ function AddPermissionPage() {
   // Create new Permission
 
   const permissionCreate = async (dataSetArn: string, userGroupArn: string, field: string, rlsValues: string) => {
+    setCurrentAction('add');
+    resetAllSteps();
     try{
+      // Step 1: Validate permission data
+      set_step0_validating(StepStatus.LOADING);
+      addLog('[STEP 1/2] Validating permission data...');
+      
       if( rlsValues === ""  ){
+        set_step0_validating(StepStatus.ERROR);
         throw new Error("No values for filters provided");
       }
       if( field === "" ){
+        set_step0_validating(StepStatus.ERROR);
         throw new Error("No field selected");
       }
       if( userGroupArn === "" ){
+        set_step0_validating(StepStatus.ERROR);
         throw new Error("No group/user entity selected");
       }
       if( dataSetArn === ""){
+        set_step0_validating(StepStatus.ERROR);
         throw new Error("No dataset selected");
       }
+      
+      addLog('✓ Permission data validated');
+      set_step0_validating(StepStatus.SUCCESS);
 
+      // Step 2: Create permission in database
+      set_step1_s3(StepStatus.LOADING);
+      addLog('[STEP 2/2] Creating permission in database...');
+      
       const response = await client.models.Permission.create({
         dataSetArn: dataSetArn,
         userGroupArn: userGroupArn,
         field: field,
         rlsValues: rlsValues,
       })
+      
       if( response?.errors ){
+        set_step1_s3(StepStatus.ERROR);
+        addLog(`✗ Failed to create permission: ${response.errors[0].message}`, 'ERROR');
         throw new Error(response.errors[0].message);
       }
+      
+      addLog('✓ Permission created successfully');
+      set_step1_s3(StepStatus.SUCCESS);
+      
       setModalVisible(false)
       fetchPermissions()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating permission:', err);
+      addLog(`✗ Error: ${err?.message || err}`, 'ERROR');
     }
 
   }
@@ -588,6 +696,8 @@ function AddPermissionPage() {
   };
 
   const publishQSRLSPermissionsClickHandler = async () => {
+    setCurrentAction('publish');
+    resetAllSteps();
     setLogs("")
     setStatusIndicator({status: "loading", message: "Publishing Permission in progress"})
   
@@ -768,9 +878,15 @@ function AddPermissionPage() {
   const saveAndApplyVisibility = async () => {
     if (!selectedDataset?.rlsDataSetId || !selectedRegion) return;
     
+    setCurrentAction('visibility');
+    resetAllSteps();
     setSavingVisibility(true);
     
     try {
+      // Step 1: Update database records
+      set_step0_validating(StepStatus.LOADING);
+      addLog('[STEP 1/3] Updating visibility records in database...');
+      
       // Get current records from database
       const currentRecords = await client.models.RLSDataSetVisibility.list({
         filter: {
@@ -801,7 +917,13 @@ function AddPermissionPage() {
         }
       }
       
-      // Apply permissions to QuickSight
+      addLog('✓ Database records updated');
+      set_step0_validating(StepStatus.SUCCESS);
+      
+      // Step 2: Apply permissions to QuickSight
+      set_step1_s3(StepStatus.LOADING);
+      addLog('[STEP 2/3] Applying permissions to QuickSight RLS dataset...');
+      
       const permissions = rlsVisibilityList.map(item => ({
         userGroupArn: item.userGroupArn,
         permissionLevel: item.permissionLevel
@@ -816,17 +938,320 @@ function AddPermissionPage() {
       });
       
       if (updateResponse.data?.statusCode === 200) {
+        addLog('✓ QuickSight permissions updated');
+        set_step1_s3(StepStatus.SUCCESS);
+        
+        // Step 3: Complete
+        set_step2_glue(StepStatus.LOADING);
+        addLog('[STEP 3/3] Finalizing...');
+        addLog('✓ RLS Dataset visibility updated successfully');
+        set_step2_glue(StepStatus.SUCCESS);
+        
         alert('RLS Dataset visibility updated successfully!');
         setRlsVisibilityModalVisible(false);
       } else {
+        addLog(`✗ Failed to update QuickSight permissions: ${updateResponse.data?.message}`, 'ERROR');
+        set_step1_s3(StepStatus.ERROR);
         alert('Failed to update QuickSight permissions: ' + updateResponse.data?.message);
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving visibility:', error);
+      addLog(`✗ Error saving visibility: ${error?.message || error}`, 'ERROR');
       alert('Error saving visibility: ' + error);
     } finally {
       setSavingVisibility(false);
+    }
+  };
+
+  /**
+   * CSV Import Functions
+   */
+  const handleCSVFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      processCSVImport(content);
+    };
+    reader.readAsText(file);
+  };
+
+  const processCSVImport = (csvContent: string) => {
+    const result = parseRLSCSV(csvContent, users, groups);
+    
+    setImportedPermissions(result.permissions);
+    setImportErrors(result.errors);
+    setImportWarnings(result.warnings);
+    setImportFormat(result.format);
+    
+    if (result.errors.length === 0) {
+      setImportModalVisible(true);
+    } else {
+      alert('CSV Import Failed:\n' + result.errors.join('\n'));
+    }
+  };
+
+  const editImportedPermission = (index: number, field: string, value: string) => {
+    const updated = [...importedPermissions];
+    if (field === 'field') {
+      updated[index].field = value;
+    } else if (field === 'rlsValues') {
+      updated[index].rlsValues = value;
+    }
+    setImportedPermissions(updated);
+  };
+
+  const deleteImportedPermission = (index: number) => {
+    const updated = importedPermissions.filter((_, i) => i !== index);
+    setImportedPermissions(updated);
+  };
+
+  const confirmImport = async () => {
+    if (!selectedDataset?.dataSetArn) return;
+    
+    setCurrentAction('import');
+    resetAllSteps();
+    setImportingPermissions(true);
+    
+    try {
+      // Step 1: Validate imported data
+      set_step0_validating(StepStatus.LOADING);
+      addLog('[STEP 1/3] Validating imported permissions...');
+      
+      const validPermissions = importedPermissions.filter(p => p.isResolved);
+      
+      if (validPermissions.length === 0) {
+        set_step0_validating(StepStatus.ERROR);
+        addLog('✗ No valid permissions to import', 'ERROR');
+        alert('No valid permissions to import. Please check warnings.');
+        return;
+      }
+      
+      addLog(`✓ Validated ${validPermissions.length} permission(s)`);
+      set_step0_validating(StepStatus.SUCCESS);
+
+      // Step 2: Create permissions in database
+      set_step1_s3(StepStatus.LOADING);
+      addLog(`[STEP 2/3] Importing ${validPermissions.length} permission(s) to database...`);
+      
+      for (const perm of validPermissions) {
+        await client.models.Permission.create({
+          dataSetArn: selectedDataset.dataSetArn,
+          userGroupArn: perm.userGroupArn,
+          field: perm.field,
+          rlsValues: perm.rlsValues
+        });
+      }
+      
+      addLog(`✓ Imported ${validPermissions.length} permission(s) successfully`);
+      set_step1_s3(StepStatus.SUCCESS);
+
+      // Step 3: Refresh permissions list
+      set_step2_glue(StepStatus.LOADING);
+      addLog('[STEP 3/3] Refreshing permissions list...');
+      await fetchPermissions();
+      addLog('✓ Permissions list refreshed');
+      set_step2_glue(StepStatus.SUCCESS);
+      
+      setImportModalVisible(false);
+      alert(`Successfully imported ${validPermissions.length} permission(s)!\n\nNext steps:\n1. Review the imported permissions\n2. Click "Publish RLS in QuickSight" to apply them\n3. Manually remove any existing RLS dataset link in QuickSight if needed`);
+      
+    } catch (error: any) {
+      console.error('Error importing permissions:', error);
+      addLog(`✗ Error importing permissions: ${error?.message || error}`, 'ERROR');
+      alert('Error importing permissions: ' + error);
+    } finally {
+      setImportingPermissions(false);
+    }
+  };
+
+  const removeAllPermissions = async () => {
+    if (!selectedDataset?.dataSetArn || !selectedRegionDetails) return;
+    
+    setCurrentAction('remove');
+    resetAllSteps();
+    setRemovingAllPermissions(true);
+    
+    try {
+      // Use the dataSetId of the main dataset (the one with RLS applied)
+      const rlsKey = selectedDataset.dataSetId;
+      
+      addLog('=== Starting Remove All Permissions ===');
+      addLog(`Dataset: ${selectedDataset.dataSetName} (${selectedDataset.dataSetId})`);
+      addLog(`Region: ${selectedDataset.region}`);
+      addLog(`RLS Dataset ID: ${selectedDataset.rlsDataSetId || 'N/A'}`);
+      addLog(`RLS Key (dataSetId): ${rlsKey}`);
+      addLog(`S3 Bucket: ${selectedRegionDetails.s3BucketName}`);
+      addLog(`Glue Database: ${selectedRegionDetails.glueDatabaseName}`);
+      addLog('');
+
+      // 1. Delete all permissions from the data model
+      set_step0_validating(StepStatus.LOADING);
+      addLog('[STEP 1/6] Deleting all permissions from database...');
+      const permissionsToDelete = permissionsList.filter(p => p.dataSetArn === selectedDataset.dataSetArn);
+      
+      for (const permission of permissionsToDelete) {
+        await client.models.Permission.delete({ id: permission.id });
+      }
+      addLog(`✓ Deleted ${permissionsToDelete.length} permission(s) from database`);
+      set_step0_validating(StepStatus.SUCCESS);
+
+      // 2. Delete S3 folder if it exists (RLS-Datasets/dataSetId/)
+      set_step1_s3(StepStatus.LOADING);
+      const s3Path = `${selectedRegionDetails.s3BucketName}/RLS-Datasets/${rlsKey}/`;
+      addLog(`[STEP 2/6] Deleting S3 folder: s3://${s3Path}`);
+      try {
+        const s3DeleteResult = await client.queries.deleteDataSetS3Objects({
+          region: selectedDataset.region,
+          s3Key: rlsKey,
+          s3BucketName: selectedRegionDetails.s3BucketName
+        });
+        
+        if (s3DeleteResult.data?.statusCode === 200) {
+          addLog(`✓ S3 folder deleted successfully: s3://${s3Path}`);
+          set_step1_s3(StepStatus.SUCCESS);
+        } else if (s3DeleteResult.data?.statusCode === 404) {
+          addLog(`⚠ S3 folder not found (already deleted): s3://${s3Path}`, 'WARNING');
+          set_step1_s3(StepStatus.SUCCESS);
+        } else {
+          addLog(`✗ Failed to delete S3 folder: ${s3DeleteResult.data?.message}`, 'ERROR');
+          set_step1_s3(StepStatus.ERROR);
+        }
+      } catch (s3Error: any) {
+        addLog(`✗ Error deleting S3 folder: ${s3Error?.message || s3Error}`, 'ERROR');
+        set_step1_s3(StepStatus.ERROR);
+      }
+
+      // 3. Delete Glue Table if it exists (qs-rls-{dataSetId})
+      set_step2_glue(StepStatus.LOADING);
+      const glueTableName = `qs-rls-${rlsKey}`;
+      addLog(`[STEP 3/6] Deleting Glue Table: ${glueTableName} in database ${selectedRegionDetails.glueDatabaseName}`);
+      try {
+        const glueDeleteResult = await client.queries.deleteDataSetGlueTable({
+          region: selectedDataset.region,
+          glueKey: rlsKey,
+          glueDatabaseName: selectedRegionDetails.glueDatabaseName
+        });
+        
+        if (glueDeleteResult.data?.statusCode === 200) {
+          addLog(`✓ Glue Table deleted successfully: ${glueTableName}`);
+          set_step2_glue(StepStatus.SUCCESS);
+        } else {
+          addLog(`✗ Failed to delete Glue Table: ${glueDeleteResult.data?.message}`, 'ERROR');
+          set_step2_glue(StepStatus.ERROR);
+        }
+      } catch (glueError: any) {
+        addLog(`✗ Error deleting Glue Table: ${glueError?.message || glueError}`, 'ERROR');
+        set_step2_glue(StepStatus.ERROR);
+      }
+
+      // 4. Delete QuickSight RLS dataset if it exists
+      set_step3_publishingRLS(StepStatus.LOADING);
+      if (selectedDataset.rlsDataSetId) {
+        // Extract just the ID from the rlsDataSetId (in case it's an ARN)
+        const rlsDataSetIdOnly = selectedDataset.rlsDataSetId.includes('/') 
+          ? selectedDataset.rlsDataSetId.split('/').pop() 
+          : selectedDataset.rlsDataSetId;
+        
+        addLog(`[STEP 4/6] Deleting QuickSight RLS dataset ID: ${rlsDataSetIdOnly}`);
+        addLog(`  Region: ${selectedDataset.region}`);
+        try {
+          const qsDeleteResult = await client.queries.deleteDataSetFromQS({
+            region: selectedDataset.region,
+            dataSetId: rlsDataSetIdOnly || selectedDataset.rlsDataSetId
+          });
+          
+          if (qsDeleteResult.data?.statusCode === 200) {
+            addLog(`✓ QuickSight RLS dataset deleted successfully: ${rlsDataSetIdOnly}`);
+            
+            // Also delete the RLS dataset record from our database
+            addLog(`  Deleting RLS dataset record from database...`);
+            try {
+              // Find the RLS dataset record in our database
+              const rlsDatasetRecords = await client.models.DataSet.list({
+                filter: {
+                  dataSetId: { eq: rlsDataSetIdOnly },
+                  isRls: { eq: true }
+                }
+              });
+              
+              if (rlsDatasetRecords.data && rlsDatasetRecords.data.length > 0) {
+                for (const record of rlsDatasetRecords.data) {
+                  await client.models.DataSet.delete({ dataSetArn: record.dataSetArn });
+                  addLog(`  ✓ Deleted RLS dataset record: ${record.dataSetArn}`);
+                }
+              } else {
+                addLog(`  ⚠ No RLS dataset record found in database`, 'WARNING');
+              }
+            } catch (dbError: any) {
+              addLog(`  ✗ Error deleting RLS dataset record from database: ${dbError?.message || dbError}`, 'ERROR');
+            }
+            
+            set_step3_publishingRLS(StepStatus.SUCCESS);
+          } else {
+            addLog(`✗ Failed to delete QuickSight RLS dataset: ${qsDeleteResult.data?.message}`, 'ERROR');
+            addLog(`  Error details: ${JSON.stringify(qsDeleteResult.data)}`, 'ERROR');
+            set_step3_publishingRLS(StepStatus.ERROR);
+          }
+        } catch (qsError: any) {
+          addLog(`✗ Error deleting QuickSight RLS dataset: ${qsError?.message || qsError}`, 'ERROR');
+          addLog(`  Full error: ${JSON.stringify(qsError)}`, 'ERROR');
+          set_step3_publishingRLS(StepStatus.ERROR);
+        }
+      } else {
+        addLog('[STEP 4/6] Skipping QuickSight RLS dataset deletion - no rlsDataSetId found', 'WARNING');
+        set_step3_publishingRLS(StepStatus.SUCCESS);
+      }
+
+      // 5. Remove RLS configuration from main dataset
+      set_step4_updatingMainDataSet(StepStatus.LOADING);
+      addLog(`[STEP 5/6] Removing RLS configuration from main dataset: ${selectedDataset.dataSetId}`);
+      const removeRLSResult = await client.queries.removeRLSDataSet({
+        region: selectedDataset.region,
+        dataSetId: selectedDataset.dataSetId
+      });
+      
+      if (removeRLSResult.data?.statusCode === 200 || removeRLSResult.data?.statusCode === 201) {
+        addLog(`✓ RLS configuration removed from main dataset: ${selectedDataset.dataSetId}`);
+        set_step4_updatingMainDataSet(StepStatus.SUCCESS);
+      } else {
+        addLog(`✗ Failed to remove RLS from main dataset: ${removeRLSResult.data?.message}`, 'ERROR');
+        set_step4_updatingMainDataSet(StepStatus.ERROR);
+      }
+
+      // 6. Update dataset record to mark RLS as disabled
+      set_step5_refreshingRlsTool(StepStatus.LOADING);
+      addLog(`[STEP 6/6] Updating dataset record in database...`);
+      await client.models.DataSet.update({
+        dataSetArn: selectedDataset.dataSetArn,
+        rlsEnabled: 'DISABLED',
+        rlsToolManaged: false
+      });
+      addLog(`✓ Dataset record updated: ${selectedDataset.dataSetArn}`);
+      set_step5_refreshingRlsTool(StepStatus.SUCCESS);
+
+      // 7. Refresh data
+      addLog('Refreshing data...');
+      await fetchPermissions();
+      if (selectedDataset?.region) {
+        await fetchDatasets(selectedDataset.region);
+      }
+      
+      setRemoveAllModalVisible(false);
+      setRemoveAllConfirmText('');
+      addLog('');
+      addLog('=== All permissions removed successfully! ===');
+      alert('All permissions have been removed successfully!');
+      
+    } catch (error: any) {
+      console.error('Error removing all permissions:', error);
+      addLog(`✗ FATAL ERROR: ${error?.message || error}`, 'ERROR');
+      alert('Error removing all permissions: ' + (error?.message || error));
+    } finally {
+      setRemovingAllPermissions(false);
     }
   };
 
@@ -955,10 +1380,14 @@ function AddPermissionPage() {
           label: selectedDatasetDetails.name || '',
           dataSetArn: selectedDatasetDetails.dataSetArn,
           dataSetId: selectedDatasetDetails.dataSetId,
+          dataSetName: selectedDatasetDetails.name,
+          region: selectedDatasetDetails.dataSetRegion,
           fields: selectedDatasetDetails.fields,
           rlsToolManaged: selectedDatasetDetails.rlsToolManaged,
           rlsDataSetId: selectedDatasetDetails.rlsDataSetId || "",
           rlsEnabled: selectedDatasetDetails.rlsEnabled,
+          rlsS3Key: selectedDatasetDetails.glueS3Id,
+          rlsS3BucketName: selectedRegion?.value ? regionsList?.find(r => r.regionName === selectedRegion.value)?.s3BucketName : undefined,
           lastUpdatedTime: selectedDatasetDetails.updatedAt
         };
         setSelectedDataset(newSelectedDataset);
@@ -1237,10 +1666,14 @@ function AddPermissionPage() {
                       label: detail.selectedOption.label || '',
                       dataSetArn: selectedDatasetDetails.dataSetArn,
                       dataSetId: selectedDatasetDetails.dataSetId,
+                      dataSetName: selectedDatasetDetails.name,
+                      region: selectedDatasetDetails.dataSetRegion,
                       fields: selectedDatasetDetails.fields,
                       rlsToolManaged: selectedDatasetDetails.rlsToolManaged,
                       rlsDataSetId: selectedDatasetDetails.rlsDataSetId || "",
                       rlsEnabled: selectedDatasetDetails.rlsEnabled,
+                      rlsS3Key: selectedDatasetDetails.glueS3Id,
+                      rlsS3BucketName: selectedRegion?.value ? regionsList?.find(r => r.regionName === selectedRegion.value)?.s3BucketName : undefined,
                       lastUpdatedTime: selectedDatasetDetails.updatedAt
                     };
                     
@@ -1415,35 +1848,66 @@ function AddPermissionPage() {
                     <Button
                       onClick={() => {
                         fetchPermissions();
-                      }}  
+                      }}
+                      iconName="refresh"
                     >
-                      <Icon name="refresh"/>
-                      
+                      Refresh
                     </Button>
                     <Button
                       onClick={() => setModalVisible(true)}  
                       variant="primary"
+                      iconName="add-plus"
                     >
-                      <Icon name="add-plus"/>
-                      <> Add Permission</>
+                      Add Permission
                     </Button>
-                    <Button
-                      onClick={() => publishQSRLSPermissionsClickHandler()}  
-                      variant="primary"
-                      disabled={publishQSRLSDisabled}
+                    <ButtonDropdown
+                      items={[
+                        {
+                          text: "Import from CSV",
+                          id: "import-csv",
+                          iconName: "upload"
+                        },
+                        {
+                          text: "Publish RLS in QuickSight",
+                          id: "publish-rls",
+                          iconName: "thumbs-up",
+                          disabled: publishQSRLSDisabled
+                        },
+                        {
+                          text: "Manage RLS Dataset Visibility",
+                          id: "manage-visibility",
+                          iconName: "share",
+                          disabled: !selectedDataset?.rlsToolManaged || !selectedDataset?.rlsDataSetId
+                        },
+                        {
+                          text: "Remove All Permissions",
+                          id: "remove-all",
+                          iconName: "remove",
+                          disabled: permissionsList.filter(p => p.dataSetArn === selectedDataset?.dataSetArn).length === 0
+                        }
+                      ]}
+                      onItemClick={({ detail }) => {
+                        if (detail.id === "import-csv") {
+                          document.getElementById('csv-import-input')?.click();
+                        } else if (detail.id === "publish-rls") {
+                          publishQSRLSPermissionsClickHandler();
+                        } else if (detail.id === "manage-visibility") {
+                          openRLSVisibilityModal();
+                        } else if (detail.id === "remove-all") {
+                          setRemoveAllModalVisible(true);
+                        }
+                      }}
                       loading={publishQSRLSLoading}
                     >
-                      <Icon name="thumbs-up"/>
-                      <> Publish RLS in QuickSight</>
-                    </Button>
-                    <Button
-                      onClick={() => openRLSVisibilityModal()}
-                      disabled={!selectedDataset?.rlsToolManaged || !selectedDataset?.rlsDataSetId}
-                      iconName="share"
-                    >
-                      Manage RLS Dataset Visibility
-                    </Button>
-                    
+                      Actions
+                    </ButtonDropdown>
+                    <input
+                      id="csv-import-input"
+                      type="file"
+                      accept=".csv"
+                      style={{ display: 'none' }}
+                      onChange={handleCSVFileUpload}
+                    />
                   </SpaceBetween>
                   ) : undefined
                 }
@@ -1746,38 +2210,10 @@ function AddPermissionPage() {
               variant="container">  
             <SpaceBetween size="l">
               <Steps 
-                steps={[
-                  {
-                    status: step0_validating,
-                    header: "Validating RLS Tool Resources",
-                    statusIconAriaLabel: step0_validating
-                  },
-                  {
-                    status: step1_s3,
-                    header: "Publishing new Permissions in S3",
-                    statusIconAriaLabel: step1_s3
-                  },
-                  {
-                    status: step2_glue,
-                    header: "Updating Glue Database",
-                    statusIconAriaLabel: step2_glue
-                  },
-                  {
-                    status: step3_publishingRLS,
-                    header: "Updating RLS DataSet in QuickSight",
-                    statusIconAriaLabel: step3_publishingRLS
-                  },
-                  {
-                    status: step4_updatingMainDataSet,
-                    header: "Applying RLS Permissions to Main DataSet",
-                    statusIconAriaLabel: step4_updatingMainDataSet
-                  },
-                  {
-                    status: step5_refreshingRlsTool,
-                    header: "Refreshiing RLS Tool",
-                    statusIconAriaLabel: step5_refreshingRlsTool
-                  }
-                ]}
+                steps={getStepsForAction().map(step => ({
+                  ...step,
+                  statusIconAriaLabel: step.status
+                }))}
               />
               <CodeView 
                 content={ logs }
@@ -2265,6 +2701,249 @@ function AddPermissionPage() {
                 </Button>
               </SpaceBetween>
             </Container>
+          </SpaceBetween>
+        </Modal>
+
+        {/* CSV Import Preview Modal */}
+        <Modal
+          visible={importModalVisible}
+          onDismiss={() => setImportModalVisible(false)}
+          header="Import Permissions from CSV"
+          size="max"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button variant="link" onClick={() => setImportModalVisible(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  variant="primary" 
+                  onClick={confirmImport}
+                  loading={importingPermissions}
+                  disabled={importedPermissions.filter(p => p.isResolved).length === 0}
+                >
+                  Import {importedPermissions.filter(p => p.isResolved).length} Permission(s)
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="l">
+            <Alert type="info">
+              <strong>Detected Format:</strong> {importFormat}
+              <br />
+              <strong>Valid Permissions:</strong> {importedPermissions.filter(p => p.isResolved).length} / {importedPermissions.length}
+            </Alert>
+
+            {importErrors.length > 0 && (
+              <Alert type="error" header="Errors">
+                <ul>
+                  {importErrors.map((error, idx) => (
+                    <li key={idx}>{error}</li>
+                  ))}
+                </ul>
+              </Alert>
+            )}
+
+            {importWarnings.length > 0 && (
+              <Alert type="warning" header="Warnings">
+                <ul>
+                  {importWarnings.map((warning, idx) => (
+                    <li key={idx}>{warning}</li>
+                  ))}
+                </ul>
+              </Alert>
+            )}
+
+            <Alert type="info" header="How to Edit">
+              <ul>
+                <li><strong>Edit:</strong> Click on any Field or Values cell to edit inline, or use the edit button</li>
+                <li><strong>Delete:</strong> Click the remove button to delete a permission row</li>
+                <li><strong>Values:</strong> Leave empty or use "*" for wildcard (access to all values)</li>
+              </ul>
+            </Alert>
+
+            <Alert type="warning" header="Important">
+              <strong>Before importing:</strong>
+              <ul>
+                <li>Review and edit the permissions below to ensure they are correct</li>
+                <li>After import, click "Publish RLS in QuickSight" to apply them</li>
+                <li><strong>If this dataset already has RLS configured, you must manually remove it in QuickSight first</strong></li>
+              </ul>
+            </Alert>
+
+            <Container header={<Header variant="h3">Preview Imported Permissions</Header>}>
+              <Table
+                items={importedPermissions.map((item, index) => ({ ...item, _index: index }))}
+                columnDefinitions={[
+                  {
+                    id: "type",
+                    header: "Type",
+                    cell: item => (
+                      <Badge color={item.userGroupType === "USER" ? "blue" : "green"}>
+                        {item.userGroupType}
+                      </Badge>
+                    )
+                  },
+                  {
+                    id: "name",
+                    header: "Name",
+                    cell: item => item.userGroupName
+                  },
+                  {
+                    id: "field",
+                    header: "Field",
+                    cell: item => {
+                      const isEditing = editingImportRow === item._index;
+                      const displayField = item.field === '*' ? (
+                        <Badge color="severity-neutral">* (All Fields)</Badge>
+                      ) : item.field;
+                      
+                      return isEditing ? (
+                        <Input
+                          value={item.field}
+                          onChange={({ detail }) => editImportedPermission(item._index, 'field', detail.value)}
+                          onBlur={() => setEditingImportRow(null)}
+                        />
+                      ) : (
+                        <span style={{ cursor: 'pointer' }} onClick={() => setEditingImportRow(item._index)}>
+                          {displayField}
+                        </span>
+                      );
+                    }
+                  },
+                  {
+                    id: "values",
+                    header: "Values",
+                    cell: item => {
+                      const isEditing = editingImportRow === item._index;
+                      const displayValue = item.rlsValues || '*';
+                      
+                      return isEditing ? (
+                        <Input
+                          value={item.rlsValues || ''}
+                          onChange={({ detail }) => editImportedPermission(item._index, 'rlsValues', detail.value)}
+                          onBlur={() => setEditingImportRow(null)}
+                          placeholder="* for all values"
+                        />
+                      ) : (
+                        <span style={{ cursor: 'pointer' }} onClick={() => setEditingImportRow(item._index)}>
+                          {displayValue === '*' ? (
+                            <Badge color="severity-neutral">* (All)</Badge>
+                          ) : displayValue}
+                        </span>
+                      );
+                    }
+                  },
+                  {
+                    id: "status",
+                    header: "Status",
+                    cell: item => item.isResolved ? (
+                      <Badge color="green">Resolved</Badge>
+                    ) : (
+                      <Badge color="red">Not Found</Badge>
+                    )
+                  },
+                  {
+                    id: "actions",
+                    header: "Actions",
+                    cell: item => (
+                      <SpaceBetween direction="horizontal" size="xs">
+                        <Button
+                          variant="icon"
+                          iconName="edit"
+                          onClick={() => setEditingImportRow(item._index)}
+                          disabled={editingImportRow !== null}
+                        />
+                        <Button
+                          variant="icon"
+                          iconName="remove"
+                          onClick={() => {
+                            if (confirm('Are you sure you want to delete this permission?')) {
+                              deleteImportedPermission(item._index);
+                            }
+                          }}
+                        />
+                      </SpaceBetween>
+                    )
+                  }
+                ]}
+                empty={
+                  <Box textAlign="center" color="inherit">
+                    <b>No permissions to preview</b>
+                  </Box>
+                }
+              />
+            </Container>
+          </SpaceBetween>
+        </Modal>
+
+        {/* Remove All Permissions Confirmation Modal */}
+        <Modal
+          visible={removeAllModalVisible}
+          onDismiss={() => {
+            setRemoveAllModalVisible(false);
+            setRemoveAllConfirmText('');
+          }}
+          header="Remove All Permissions"
+          size="medium"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button 
+                  variant="link" 
+                  onClick={() => {
+                    setRemoveAllModalVisible(false);
+                    setRemoveAllConfirmText('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="primary" 
+                  onClick={removeAllPermissions}
+                  loading={removingAllPermissions}
+                  disabled={removeAllConfirmText !== 'Delete'}
+                >
+                  Remove All
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="l">
+            <Alert type="error" header="Warning: This action cannot be undone">
+              This will permanently:
+              <ul>
+                <li>Delete all permissions from the database</li>
+                <li>Delete the S3 RLS file (if exists)</li>
+                <li>Delete the QuickSight RLS dataset (if exists)</li>
+                <li>Remove RLS configuration from the main dataset</li>
+                <li>Set the dataset RLS status to DISABLED</li>
+              </ul>
+            </Alert>
+
+            <FormField
+              label={
+                <>
+                  To confirm, type <strong>Delete</strong> in the field below
+                </>
+              }
+            >
+              <Input
+                value={removeAllConfirmText}
+                onChange={({ detail }) => setRemoveAllConfirmText(detail.value)}
+                placeholder="Delete"
+              />
+            </FormField>
+
+            {selectedDataset && (
+              <Box>
+                <strong>Dataset:</strong> {selectedDataset.dataSetName}
+                <br />
+                <strong>Permissions to remove:</strong> {permissionsList.filter(p => p.dataSetArn === selectedDataset.dataSetArn).length}
+              </Box>
+            )}
           </SpaceBetween>
         </Modal>
 
