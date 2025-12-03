@@ -116,27 +116,26 @@ export const qs_fetchDataSets = async ({
             dataSetId: dataset.DataSetId
           })
 
-          let dataSetFields = []
+          let fieldTypes = undefined
           let apiManageable = true
           let spiceUsedCapacityDataSet = 0
           let newDataPrep = false
 
-          if( resQsDataSetFields && resQsDataSetFields.data?.datasetsFields && resQsDatasetList.data.statusCode == 200 ){
-            const data = JSON.parse(resQsDataSetFields.data.datasetsFields)
-            dataSetFields = JSON.parse(resQsDataSetFields.data.datasetsFields)
+          if( resQsDataSetFields && resQsDataSetFields.data?.fieldTypes && resQsDatasetList.data.statusCode == 200 ){
+            fieldTypes = resQsDataSetFields.data.fieldTypes
             apiManageable = true
-            spiceUsedCapacityDataSet = data.spiceCapacity
+            spiceUsedCapacityDataSet = resQsDataSetFields.data.spiceCapacityInBytes || 0
             newDataPrep = resQsDataSetFields.data.newDataPrep || false
             addLog("DataSet Fields successfully fetched for DataSet '" + dataset.Name + "' with DataSetId: " + dataset.DataSetId)
           }else if( resQsDataSetFields && resQsDataSetFields.data?.statusCode == 999 ){
             // TODO ADD CHECK THAT ERROR MESSAGE IS EXACTLY THE CORRECT ONE
             apiManageable = false
-            dataSetFields = []
+            fieldTypes = undefined
             newDataPrep = false
             addLog("DataSet " + dataset.Name + " is not manageable through APIs", "WARNING")
           } else {
             apiManageable = false
-            dataSetFields = []
+            fieldTypes = undefined
             newDataPrep = false
             //const errorMessage = "Error fetching DataSets Fields from QuickSight API. Some DataSets cannot be fully managed through APIs (e.g. CSVs directly uploaded to QS...)"
             addLog("Attempting to fetch fields for Dataset " + dataset.Name + " [" + dataset.DataSetId + "] failed. Trying to save the Dataset anyway without Fields. Some DataSets cannot be fully managed through APIs (e.g. CSVs directly uploaded to QS...)", "WARNING")
@@ -153,7 +152,7 @@ export const qs_fetchDataSets = async ({
             importMode: dataset.ImportMode, 
             lastUpdatedTime: dataset.LastUpdatedTime, 
             dataSetRegion: region,
-            fields: dataSetFields,
+            fieldTypes: fieldTypes,
             apiManageable: apiManageable,   
             toolCreated: false,
             spiceCapacityInBytes: spiceUsedCapacityDataSet,

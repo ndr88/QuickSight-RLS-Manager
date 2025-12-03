@@ -1,5 +1,6 @@
 import type { Schema } from "../../amplify/data/resource";
 import { generateClient } from "aws-amplify/data";
+import { getNonDateFields, isDateType } from "../utils/fieldTypeHelpers";
 
 const client = generateClient<Schema>();
 
@@ -37,25 +38,45 @@ export const generateCSVOutput = async (dataSetArn: string) => {
       }
     });
     
+    // Fetch dataset to get field types (needed for filtering date fields)
+    const { data: dataset } = await client.models.DataSet.get({ dataSetArn });
+    
     // If no specific fields are defined (all permissions are "view all"), 
-    // fetch dataset fields and include all of them
+    // fetch dataset fields and include all of them (excluding date fields)
     if (uniqueFields.size === 0) {
       console.log("No specific fields found, fetching dataset fields for 'view all' permissions");
       
-      // Fetch the dataset to get its fields
-      const { data: dataset } = await client.models.DataSet.get({ dataSetArn });
-      
       if (dataset && dataset.fieldTypes) {
-        // Get field names from fieldTypes object map
-        const fieldNames = Object.keys(JSON.parse(dataset.fieldTypes));
-        fieldNames.forEach(field => {
+        // Get NON-DATE field names only (RLS doesn't support date fields)
+        const nonDateFields = getNonDateFields(dataset.fieldTypes);
+        nonDateFields.forEach(field => {
           if (field) {
             uniqueFields.add(field);
           }
         });
-        console.log(`Added ${uniqueFields.size} dataset fields for 'view all' permissions`);
+        console.log(`Added ${uniqueFields.size} non-date dataset fields for 'view all' permissions`);
       } else {
         console.warn("Dataset has no fieldTypes defined, CSV will only have UserARN and GroupARN");
+      }
+    } else {
+      // Filter out date fields from explicitly defined fields
+      if (dataset && dataset.fieldTypes) {
+        const fieldTypesMap = JSON.parse(dataset.fieldTypes);
+        const fieldsToRemove: string[] = [];
+        
+        uniqueFields.forEach(field => {
+          const fieldType = fieldTypesMap[field];
+          if (fieldType && isDateType(fieldType)) {
+            fieldsToRemove.push(field);
+            console.warn(`Removing date field from CSV: ${field} (${fieldType})`);
+          }
+        });
+        
+        fieldsToRemove.forEach(field => uniqueFields.delete(field));
+        
+        if (fieldsToRemove.length > 0) {
+          console.log(`Filtered out ${fieldsToRemove.length} date field(s) from CSV`);
+        }
       }
     }
     

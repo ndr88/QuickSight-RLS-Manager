@@ -418,25 +418,27 @@ function Homepage() {
    * UseEffect Hook
    */
 
-  useEffect(() => {
-    const getSelectedDatasetDetails = async () => {
-      const { data: resRegion, errors: errors } = await client.models.ManagedRegion.list()
-      if( errors ){
-        console.log(errors)
-        addLog("Failed to retrieve Managed Regions details: " + errors, "ERROR", 500, "GraphQL-ListQueryError")
-        setErrorsCount(errorsCount + 1)
+  /**
+   * Fetch Region Details
+   */
+  const fetchRegionDetails = async () => {
+    const { data: resRegion, errors: errors } = await client.models.ManagedRegion.list()
+    if( errors ){
+      console.log(errors)
+      addLog("Failed to retrieve Managed Regions details: " + errors, "ERROR", 500, "GraphQL-ListQueryError")
+      setErrorsCount(errorsCount + 1)
+    }else{
+      if( resRegion ){
+        setSelectedRegionsDetails(resRegion)
       }else{
-        if( resRegion ){
-          setSelectedRegionsDetails(resRegion)
-        }else{
-          addLog("Failed to retrieve Managed Regions details: No data returned", "ERROR", 500, "GraphQL-ListQueryError")
-          setErrorsCount(errorsCount + 1)
-        }
+        addLog("Failed to retrieve Managed Regions details: No data returned", "ERROR", 500, "GraphQL-ListQueryError")
+        setErrorsCount(errorsCount + 1)
       }
     }
+  }
 
-    getSelectedDatasetDetails()
-
+  useEffect(() => {
+    fetchRegionDetails()
   }, [selectedRegions]);
 
   useEffect(() => {
@@ -645,6 +647,7 @@ function Homepage() {
     
                         addLog("===================================================================")
                         addLog("Managed Regions Update: COMPLETED.")
+                        await fetchRegionDetails()
                         setLoadingRegions(false)
                       }}
                     >
@@ -695,6 +698,7 @@ function Homepage() {
                   
                                       addLog("===================================================================")
                                       addLog("Managed Region Update: COMPLETED.")
+                                      await fetchRegionDetails()
                                       setLoadingRegions(false)
                                     }}
                                   >

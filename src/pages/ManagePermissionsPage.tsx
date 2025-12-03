@@ -25,6 +25,7 @@ import { CodeView } from "@cloudscape-design/code-view";
 
 import { publishQSRLSPermissions } from "../hooks/publishQSRLSPermissions"
 import { parseRLSCSV } from "../hooks/parseRLSCSV"
+import { isDateType } from "../utils/fieldTypeHelpers"
 
 import { StepStatus } from '../hooks/STEP_STATUS'
 import { useSearchParams } from "react-router-dom";
@@ -533,7 +534,7 @@ function AddPermissionPage() {
         setVersionPreviewContent(csvContent);
         
         // Parse CSV to show as table
-        const result = parseRLSCSV(csvContent, users, groups);
+        const result = parseRLSCSV(csvContent, users, groups, selectedDataset?.fieldTypes);
         setImportedPermissions(result.permissions);
         setImportFormat(result.format);
         setImportErrors(result.errors);
@@ -570,7 +571,7 @@ function AddPermissionPage() {
         
         // Parse and import the CSV content
         const csvContent = response.data.csvContent;
-        const result = parseRLSCSV(csvContent, users, groups);
+        const result = parseRLSCSV(csvContent, users, groups, selectedDataset?.fieldTypes);
         
         if (result.permissions && result.permissions.length > 0) {
           setImportedPermissions(result.permissions);
@@ -678,6 +679,22 @@ function AddPermissionPage() {
         set_step0_validating(StepStatus.ERROR);
         throw new Error("No group/user entity selected");
       }
+      
+      // Validate field is not a date type
+      if (selectedDataset?.fieldTypes) {
+        try {
+          const fieldTypesMap = JSON.parse(selectedDataset.fieldTypes);
+          const fieldType = fieldTypesMap[field];
+          if (fieldType && isDateType(fieldType)) {
+            set_step0_validating(StepStatus.ERROR);
+            addLog(`Field "${field}" is a ${fieldType} type. Date fields are not supported for RLS.`, 'ERROR');
+            throw new Error(`Date fields cannot be used for RLS rules. Field "${field}" is type ${fieldType}.`);
+          }
+        } catch (parseError) {
+          console.warn('Could not validate field type:', parseError);
+        }
+      }
+      
       if( dataSetArn === ""){
         set_step0_validating(StepStatus.ERROR);
         throw new Error("No dataset selected");
@@ -1177,7 +1194,7 @@ function AddPermissionPage() {
   };
 
   const processCSVImport = (csvContent: string) => {
-    const result = parseRLSCSV(csvContent, users, groups);
+    const result = parseRLSCSV(csvContent, users, groups, selectedDataset?.fieldTypes);
     
     setImportedPermissions(result.permissions);
     setImportErrors(result.errors);
@@ -2821,16 +2838,31 @@ function AddPermissionPage() {
 
                 }}
                 options={
-                  // Get fields from fieldTypes
+                  // Get fields from fieldTypes, show type, disable date fields
                   selectedDataset?.fieldTypes 
-                    ? Object.keys(JSON.parse(selectedDataset.fieldTypes)).map((field: string) => ({
-                        label: field,
-                        value: field
-                      }))
+                    ? (() => {
+                        const fieldTypesMap = JSON.parse(selectedDataset.fieldTypes);
+                        return Object.keys(fieldTypesMap).map((fieldName: string) => {
+                          const fieldType = fieldTypesMap[fieldName];
+                          const isDate = isDateType(fieldType);
+                          return {
+                            label: `${fieldName} (${fieldType})`,
+                            value: fieldName,
+                            disabled: isDate,
+                            tags: isDate ? ['Date field - Not supported'] : []
+                          };
+                        });
+                      })()
                     : []
                 }
                 />
             </FormField>
+            
+            <Alert type="info">
+              <strong>Note:</strong> Date fields are not supported for RLS rules due to QuickSight limitations and are disabled in the dropdown above. 
+              Numeric fields are not officially supported but may work in some cases. Only text/string fields are fully supported.
+            </Alert>
+
             <FormField 
               label="Filter Values:"
               description={`Comma-separated list. Use * if you want the ${selectedUserGroup ? selectedUserGroup.value : "User/Group"} to see all the values for the selected Field.`}

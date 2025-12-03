@@ -24,7 +24,8 @@ interface ParseResult {
 export const parseRLSCSV = (
   csvContent: string,
   users: any[],
-  groups: any[]
+  groups: any[],
+  fieldTypesJson?: string | null
 ): ParseResult => {
   const result: ParseResult = {
     permissions: [],
@@ -67,6 +68,33 @@ export const parseRLSCSV = (
     if (fields.length === 0) {
       result.errors.push('CSV must have at least one field column');
       return result;
+    }
+
+    // Validate fields against date types if fieldTypes provided
+    if (fieldTypesJson) {
+      try {
+        const fieldTypesMap = JSON.parse(fieldTypesJson);
+        const dateFields: string[] = [];
+        
+        fields.forEach(field => {
+          const fieldType = fieldTypesMap[field];
+          if (fieldType) {
+            const dateTypes = ['DATETIME', 'DATE', 'TIMESTAMP'];
+            if (dateTypes.includes(fieldType.toUpperCase())) {
+              dateFields.push(`${field} (${fieldType})`);
+            }
+          }
+        });
+        
+        if (dateFields.length > 0) {
+          result.warnings.push(
+            `Date fields detected in CSV: ${dateFields.join(', ')}. ` +
+            `QuickSight RLS does not support date fields. These permissions may not work correctly.`
+          );
+        }
+      } catch (e) {
+        console.warn('Failed to parse fieldTypes for validation:', e);
+      }
     }
 
     // Parse data rows

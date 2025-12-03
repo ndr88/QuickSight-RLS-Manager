@@ -39,15 +39,25 @@ export const handler: Schema["fetchDataSetFieldsFromQS"]["functionHandler"] = as
       const outputFields = response.DataSet.OutputColumns.map((column: any) => column.Name);
       const hasNewDataPrep = response.DataSet.DataPrepConfiguration !== undefined;
       
+      // Build field types object map: { fieldName: fieldType }
+      const fieldTypesMap: Record<string, string> = {};
+      response.DataSet.OutputColumns.forEach((column: any) => {
+        if (column.Name) {
+          fieldTypesMap[column.Name] = column.Type || 'STRING';
+        }
+      });
+      
       logger.info('Dataset Fields fetched successfully', { 
         fieldsCount: outputFields.length,
-        newDataPrep: hasNewDataPrep 
+        newDataPrep: hasNewDataPrep,
+        fieldTypes: Object.keys(fieldTypesMap).length
       });
       
       return {
         statusCode: 200,
         message: 'QuickSight Dataset Fields fetched successfully',
         datasetsFields: JSON.stringify(outputFields),
+        fieldTypes: JSON.stringify(fieldTypesMap),
         spiceCapacityInBytes: response.DataSet.ConsumedSpiceCapacityInBytes || 0,
         newDataPrep: hasNewDataPrep
       };
@@ -63,6 +73,7 @@ export const handler: Schema["fetchDataSetFieldsFromQS"]["functionHandler"] = as
         statusCode: 999,
         message: error.message,
         datasetsFields: "",
+        fieldTypes: undefined,
         spiceCapacityInBytes: 0
       };
     }
@@ -71,6 +82,7 @@ export const handler: Schema["fetchDataSetFieldsFromQS"]["functionHandler"] = as
       statusCode: 500,
       message: 'Error fetching QuickSight Dataset Fields',
       datasetsFields: "",
+      fieldTypes: undefined,
       spiceCapacityInBytes: 0,
       errorName: error instanceof Error ? error.name : 'GenericError'
     };

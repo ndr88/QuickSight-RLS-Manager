@@ -135,20 +135,20 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
           physicalTableMapContent: JSON.stringify(dataSetToSecure.PhysicalTableMap)
         });
         
-        // Try including PhysicalTableMap EXACTLY as returned (with empty objects)
-        // QuickSight returns it as {"key": {}} and maybe it expects it back the same way
-        logger.info('Including PhysicalTableMap exactly as returned (with empty objects)');
+        // For new data prep, include PhysicalTableMap
+        logger.info('Including PhysicalTableMap for new data prep');
         updateParams.PhysicalTableMap = dataSetToSecure.PhysicalTableMap;
         
-        // Include DataPrepConfiguration (required for new data prep)
+        // DataPrepConfiguration is REQUIRED for new data prep experience
+        logger.info('Including DataPrepConfiguration (required for new data prep)');
         updateParams.DataPrepConfiguration = dataSetToSecure.DataPrepConfiguration;
         
-        // Clone SemanticModelConfiguration and add RLS to each table
+        // Clone SemanticModelConfiguration and add/update RLS to each table
         const semanticModelConfig = JSON.parse(JSON.stringify(dataSetToSecure.SemanticModelConfiguration || {}));
         
         if (semanticModelConfig.TableMap) {
           Object.keys(semanticModelConfig.TableMap).forEach(tableKey => {
-            // Correct structure for new data prep
+            // Add or update RLS configuration
             semanticModelConfig.TableMap[tableKey].RowLevelPermissionConfiguration = {
               RowLevelPermissionDataSet: {
                 Arn: rlsDataSetArn,
@@ -162,36 +162,19 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
         
         updateParams.SemanticModelConfiguration = semanticModelConfig;
         
-        // Include other optional fields if they exist
-        if (dataSetToSecure.FieldFolders) {
-          updateParams.FieldFolders = dataSetToSecure.FieldFolders;
-        }
-        if (dataSetToSecure.DataSetUsageConfiguration) {
-          updateParams.DataSetUsageConfiguration = dataSetToSecure.DataSetUsageConfiguration;
-        }
-        if (dataSetToSecure.DatasetParameters) {
-          updateParams.DatasetParameters = dataSetToSecure.DatasetParameters;
-        }
-        if (dataSetToSecure.ColumnLevelPermissionRules) {
-          updateParams.ColumnLevelPermissionRules = dataSetToSecure.ColumnLevelPermissionRules;
-        }
-        if (dataSetToSecure.ColumnGroups) {
-          updateParams.ColumnGroups = dataSetToSecure.ColumnGroups;
-        }
-        if (dataSetToSecure.RowLevelPermissionTagConfiguration) {
-          updateParams.RowLevelPermissionTagConfiguration = dataSetToSecure.RowLevelPermissionTagConfiguration;
-        }
       } else {
         // LEGACY DATA PREP: RLS at top level
-        // Include PhysicalTableMap for legacy data prep
         logger.info('Using legacy data prep RLS configuration');
         
+        // Always include PhysicalTableMap for legacy (even if empty)
         updateParams.PhysicalTableMap = dataSetToSecure.PhysicalTableMap;
         
+        // Include LogicalTableMap (required for legacy)
         if (dataSetToSecure.LogicalTableMap) {
           updateParams.LogicalTableMap = dataSetToSecure.LogicalTableMap;
         }
         
+        // RLS at top level (add or update)
         updateParams.RowLevelPermissionDataSet = {
           Arn: rlsDataSetArn,
           PermissionPolicy: "GRANT_ACCESS",
@@ -200,7 +183,22 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
         };
       }
 
-      // Include RowLevelPermissionTagConfiguration if present
+      // Include optional fields for BOTH legacy and new data prep
+      if (dataSetToSecure.FieldFolders) {
+        updateParams.FieldFolders = dataSetToSecure.FieldFolders;
+      }
+      if (dataSetToSecure.DataSetUsageConfiguration) {
+        updateParams.DataSetUsageConfiguration = dataSetToSecure.DataSetUsageConfiguration;
+      }
+      if (dataSetToSecure.DatasetParameters) {
+        updateParams.DatasetParameters = dataSetToSecure.DatasetParameters;
+      }
+      if (dataSetToSecure.ColumnLevelPermissionRules) {
+        updateParams.ColumnLevelPermissionRules = dataSetToSecure.ColumnLevelPermissionRules;
+      }
+      if (dataSetToSecure.ColumnGroups) {
+        updateParams.ColumnGroups = dataSetToSecure.ColumnGroups;
+      }
       if (dataSetToSecure.RowLevelPermissionTagConfiguration) {
         updateParams.RowLevelPermissionTagConfiguration = dataSetToSecure.RowLevelPermissionTagConfiguration;
       }
@@ -222,7 +220,21 @@ export const handler: Schema["publishRLS04QsUpdateMainDataSetRLS"]["functionHand
 
       const updateDataSetCommand = new UpdateDataSetCommand(updateParams);
 
-      const updateDataSetResponse = await quicksightClient.send(updateDataSetCommand);
+      let updateDataSetResponse;
+      try {
+        updateDataSetResponse = await quicksightClient.send(updateDataSetCommand);
+      } catch (updateError: any) {
+        // Check if this is a CSV upload dataset limitation
+        if (updateError.name === 'InvalidParameterValueException' && 
+            updateError.message?.includes('Invalid PhysicalTableMap')) {
+          logger.error('CSV upload dataset API limitation detected', {
+            error: updateError.message,
+            dataSetId: dataSetToSecure.DataSetId,
+            suggestion: 'Datasets created via direct CSV upload may have API update limitations. Consider using a DataSource (S3/Athena) instead.'
+          });
+        }
+        throw updateError;
+      }
 
       if (updateDataSetResponse.$metadata.httpStatusCode === 200) {
         logger.info('DataSet updated successfully');
