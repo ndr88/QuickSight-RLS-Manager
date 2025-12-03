@@ -28,6 +28,9 @@ import { deleteDataSetGlueTable } from "./functions/deleteDataSetGlueTable/resou
 import { deleteDataSetS3Objects } from "./functions/deleteDataSetS3Objects/resources"
 import { updateRLSDataSetPermissions } from "./functions/updateRLSDataSetPermissions/resources"
 import { fetchRLSDataSetPermissions } from "./functions/fetchRLSDataSetPermissions/resources"
+import { listPublishHistory } from "./functions/listPublishHistory/resource"
+import { rollbackToVersion } from "./functions/rollbackToVersion/resource"
+import { getVersionContent } from "./functions/getVersionContent/resource"
 
 // Define Backend
 const backend = defineBackend({
@@ -58,7 +61,10 @@ const backend = defineBackend({
   deleteDataSetGlueTable,
   deleteDataSetS3Objects,
   updateRLSDataSetPermissions,
-  fetchRLSDataSetPermissions
+  fetchRLSDataSetPermissions,
+  listPublishHistory,
+  rollbackToVersion,
+  getVersionContent
 });
 
 /**
@@ -100,6 +106,9 @@ backend.deleteDataSetGlueTable.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 backend.deleteDataSetS3Objects.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 backend.updateRLSDataSetPermissions.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 backend.fetchRLSDataSetPermissions.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
+backend.listPublishHistory.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
+backend.rollbackToVersion.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
+backend.getVersionContent.addEnvironment('ACCOUNT_ID', ACCOUNT_ID)
 
 /** 
  * ---- Log Level Variable ----
@@ -132,6 +141,9 @@ backend.deleteDataSetGlueTable.addEnvironment('LOG_LEVEL', LOG_LEVEL);
 backend.deleteDataSetS3Objects.addEnvironment('LOG_LEVEL', LOG_LEVEL);
 backend.updateRLSDataSetPermissions.addEnvironment('LOG_LEVEL', LOG_LEVEL);
 backend.fetchRLSDataSetPermissions.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.listPublishHistory.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.rollbackToVersion.addEnvironment('LOG_LEVEL', LOG_LEVEL);
+backend.getVersionContent.addEnvironment('LOG_LEVEL', LOG_LEVEL);
 
 /**
  * ---- Lambda: publishRLS00ResourcesValidation
@@ -356,7 +368,9 @@ const s3RegionalPolicyStatement = new iam.PolicyStatement({
     "s3:GetObjectAttributes",
     "s3:ListBucket",
     "s3:DeleteObject",
-    "s3:CreateBucket"
+    "s3:CreateBucket",
+    "s3:PutBucketVersioning",
+    "s3:GetBucketVersioning"
   ],
   resources: ['arn:aws:s3:::' + RESOURCE_PREFIX + '*',
     'arn:aws:s3:::' + RESOURCE_PREFIX + '*/*'
@@ -440,3 +454,56 @@ const cloudwatchPolicyStatement = new iam.PolicyStatement({
 });
 
 backend.getQSSpiceCapacity.resources.lambda.addToRolePolicy(cloudwatchPolicyStatement)
+
+/**
+ * ---- Lambda: listPublishHistory
+ * ListObjectVersionsCommand
+ */
+const listPublishHistory_Policy = new iam.PolicyStatement({
+  sid: "listPublishHistoryPolicy",
+  actions: [
+    "s3:ListBucket",
+    "s3:ListBucketVersions",
+    "s3:GetBucketVersioning"
+  ],
+  resources: ['arn:aws:s3:::' + RESOURCE_PREFIX + '*',
+    'arn:aws:s3:::' + RESOURCE_PREFIX + '*/*'
+  ],
+});
+backend.listPublishHistory.resources.lambda.addToRolePolicy(listPublishHistory_Policy)
+
+/**
+ * ---- Lambda: rollbackToVersion
+ * GetObjectCommand, CopyObjectCommand
+ */
+const rollbackToVersion_Policy = new iam.PolicyStatement({
+  sid: "rollbackToVersionPolicy",
+  actions: [
+    "s3:GetObject",
+    "s3:GetObjectVersion",
+    "s3:PutObject",
+    "s3:ListBucket",
+    "s3:ListBucketVersions"
+  ],
+  resources: ['arn:aws:s3:::' + RESOURCE_PREFIX + '*',
+    'arn:aws:s3:::' + RESOURCE_PREFIX + '*/*'
+  ],
+});
+backend.rollbackToVersion.resources.lambda.addToRolePolicy(rollbackToVersion_Policy)
+
+/**
+ * ---- Lambda: getVersionContent
+ * GetObjectCommand (READ-ONLY)
+ */
+const getVersionContent_Policy = new iam.PolicyStatement({
+  sid: "getVersionContentPolicy",
+  actions: [
+    "s3:GetObject",
+    "s3:GetObjectVersion",
+    "s3:ListBucket"
+  ],
+  resources: ['arn:aws:s3:::' + RESOURCE_PREFIX + '*',
+    'arn:aws:s3:::' + RESOURCE_PREFIX + '*/*'
+  ],
+});
+backend.getVersionContent.resources.lambda.addToRolePolicy(getVersionContent_Policy)

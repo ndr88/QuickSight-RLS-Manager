@@ -39,7 +39,7 @@ interface DataSetType {
   importMode: string;
   lastUpdatedTime: string;
   createdTime: string;
-  fields: string[];
+  fieldTypes?: string; // JSON string: Object map of field name to type
   rlsDataSetId: string;
   rlsToolManaged: boolean;
   spiceCapacityInBytes: number;
@@ -68,7 +68,7 @@ interface SelectedDataset {
   dataSetId: string;
   dataSetName: string;
   region: string;
-  fields: string[];
+  fieldTypes?: string; // JSON string: Object map of field name to type
   rlsToolManaged: boolean; 
   rlsDataSetId: string;
   rlsEnabled: string;
@@ -180,6 +180,15 @@ function AddPermissionPage() {
 
   // Current action type for dynamic steps
   const [currentAction, setCurrentAction] = useState<'publish' | 'import' | 'visibility' | 'remove' | 'add' | null>(null);
+
+  // Version History
+  const [versionHistory, setVersionHistory] = useState<any[]>([]);
+  const [versionHistoryLoading, setVersionHistoryLoading] = useState<boolean>(false);
+  const [rollbackModalVisible, setRollbackModalVisible] = useState<boolean>(false);
+  const [selectedVersion, setSelectedVersion] = useState<any>(null);
+  const [versionPreviewModalVisible, setVersionPreviewModalVisible] = useState<boolean>(false);
+  const [versionPreviewContent, setVersionPreviewContent] = useState<string>('');
+  const [versionPreviewLoading, setVersionPreviewLoading] = useState<boolean>(false);
 
   // Function to get dynamic steps based on action
   const getStepsForAction = () => {
@@ -463,6 +472,129 @@ function AddPermissionPage() {
     }
   };
   
+  // Fetch Version History
+  const fetchVersionHistory = async () => {
+    if (!selectedDataset?.dataSetId || !selectedRegionDetails?.s3BucketName) {
+      console.log('Cannot fetch version history - missing dataSetId or s3BucketName', {
+        dataSetId: selectedDataset?.dataSetId,
+        s3BucketName: selectedRegionDetails?.s3BucketName
+      });
+      return;
+    }
+    
+    setVersionHistoryLoading(true);
+    try {
+      console.log('Fetching version history for:', {
+        region: selectedDataset.region,
+        dataSetId: selectedDataset.dataSetId,
+        s3BucketName: selectedRegionDetails.s3BucketName
+      });
+
+      const response = await client.queries.listPublishHistory({
+        region: selectedDataset.region,
+        dataSetId: selectedDataset.dataSetId,
+        s3BucketName: selectedRegionDetails.s3BucketName
+      });
+
+      console.log('Version history response:', response);
+
+      if (response.data?.statusCode === 200 && response.data.versions) {
+        const versions = JSON.parse(response.data.versions);
+        console.log('Parsed versions:', versions);
+        setVersionHistory(versions);
+      } else {
+        console.log('No versions or error:', response.data);
+      }
+    } catch (err) {
+      console.error('Error fetching version history:', err);
+    } finally {
+      setVersionHistoryLoading(false);
+    }
+  };
+
+  // Preview Version (READ-ONLY - does not create new version)
+  const handlePreviewVersion = async (versionId: string) => {
+    if (!selectedDataset?.dataSetId || !selectedRegionDetails?.s3BucketName) return;
+    
+    setVersionPreviewLoading(true);
+    setVersionPreviewModalVisible(true);
+    
+    try {
+      // Use getVersionContent instead of rollbackToVersion - READ ONLY!
+      const response = await client.queries.getVersionContent({
+        region: selectedDataset.region,
+        dataSetId: selectedDataset.dataSetId,
+        s3BucketName: selectedRegionDetails.s3BucketName,
+        versionId: versionId
+      });
+
+      if (response.data?.statusCode === 200 && response.data.csvContent) {
+        const csvContent = response.data.csvContent;
+        setVersionPreviewContent(csvContent);
+        
+        // Parse CSV to show as table
+        const result = parseRLSCSV(csvContent, users, groups);
+        setImportedPermissions(result.permissions);
+        setImportFormat(result.format);
+        setImportErrors(result.errors);
+        setImportWarnings(result.warnings);
+      } else {
+        setVersionPreviewContent('Failed to load version: ' + response.data?.message);
+        setImportedPermissions([]);
+      }
+    } catch (err) {
+      console.error('Error previewing version:', err);
+      setVersionPreviewContent('Error loading version: ' + err);
+      setImportedPermissions([]);
+    } finally {
+      setVersionPreviewLoading(false);
+    }
+  };
+
+  // Rollback to Version
+  const handleRollback = async (versionId: string) => {
+    if (!selectedDataset?.dataSetId || !selectedRegionDetails?.s3BucketName) return;
+    
+    try {
+      addLog(`Rolling back to version ${versionId}...`);
+      
+      const response = await client.queries.rollbackToVersion({
+        region: selectedDataset.region,
+        dataSetId: selectedDataset.dataSetId,
+        s3BucketName: selectedRegionDetails.s3BucketName,
+        versionId: versionId
+      });
+
+      if (response.data?.statusCode === 200 && response.data.csvContent) {
+        addLog('Version restored successfully. Importing permissions...');
+        
+        // Parse and import the CSV content
+        const csvContent = response.data.csvContent;
+        const result = parseRLSCSV(csvContent, users, groups);
+        
+        if (result.permissions && result.permissions.length > 0) {
+          setImportedPermissions(result.permissions);
+          setImportFormat(result.format);
+          setImportErrors(result.errors);
+          setImportWarnings(result.warnings);
+          setImportModalVisible(true);
+          
+          addLog(`Restored ${result.permissions.length} permissions from version. Review and publish to apply.`, 'INFO');
+        } else {
+          addLog('Failed to parse restored CSV: ' + result.errors.join(', '), 'ERROR');
+        }
+        
+        setRollbackModalVisible(false);
+        fetchVersionHistory(); // Refresh history
+      } else {
+        addLog('Failed to rollback: ' + response.data?.message, 'ERROR');
+      }
+    } catch (err) {
+      console.error('Error rolling back version:', err);
+      addLog('Error rolling back version: ' + err, 'ERROR');
+    }
+  };
+
   // Edit Permission
   const permissionRowEdit = async (selectedRowElement: any) => {
     try{
@@ -711,6 +843,8 @@ function AddPermissionPage() {
     setPublishComplete(false);
     setPublishHasErrors(false);
     setLogs("")
+    setErrorsCount(0);
+    setWarningsCount(0);
     setStatusIndicator({status: "loading", message: "Publishing Permission in progress"})
   
     addLog("Publishing RLS Permissions to QuickSight")
@@ -940,6 +1074,8 @@ function AddPermissionPage() {
     if (!selectedDataset?.rlsDataSetId || !selectedRegion) return;
     
     setCurrentAction('visibility');
+    setErrorsCount(0);
+    setWarningsCount(0);
     resetAllSteps();
     setSavingVisibility(true);
     
@@ -1134,6 +1270,8 @@ function AddPermissionPage() {
     if (!selectedDataset?.dataSetArn || !selectedRegionDetails) return;
     
     setCurrentAction('remove');
+    setErrorsCount(0);
+    setWarningsCount(0);
     resetAllSteps();
     setRemovingAllPermissions(true);
     
@@ -1422,6 +1560,12 @@ function AddPermissionPage() {
       fetchPermissions();
     }
   }, [selectedDataset]);
+
+  useEffect(() => {
+    if (selectedDataset && selectedDataset?.dataSetArn && selectedRegionDetails?.s3BucketName) {
+      fetchVersionHistory();
+    }
+  }, [selectedDataset, selectedRegionDetails]);
   
   useEffect(() => {
     const fetchDataSetUseEffect = async (region: string) => {
@@ -1449,7 +1593,7 @@ function AddPermissionPage() {
           dataSetId: selectedDatasetDetails.dataSetId,
           dataSetName: selectedDatasetDetails.name,
           region: selectedDatasetDetails.dataSetRegion,
-          fields: selectedDatasetDetails.fields,
+          fieldTypes: selectedDatasetDetails.fieldTypes,
           rlsToolManaged: selectedDatasetDetails.rlsToolManaged,
           rlsDataSetId: selectedDatasetDetails.rlsDataSetId || "",
           rlsEnabled: selectedDatasetDetails.rlsEnabled,
@@ -1756,7 +1900,7 @@ function AddPermissionPage() {
                       dataSetId: selectedDatasetDetails.dataSetId,
                       dataSetName: selectedDatasetDetails.name,
                       region: selectedDatasetDetails.dataSetRegion,
-                      fields: selectedDatasetDetails.fields,
+                      fieldTypes: selectedDatasetDetails.fieldTypes,
                       rlsToolManaged: selectedDatasetDetails.rlsToolManaged,
                       rlsDataSetId: selectedDatasetDetails.rlsDataSetId || "",
                       rlsEnabled: selectedDatasetDetails.rlsEnabled,
@@ -2323,6 +2467,86 @@ function AddPermissionPage() {
             </SpaceBetween>
           </ExpandableSection>
           )}
+          {!getSelectedDatasetDetails()?.isRls && selectedDataset && (
+          <ExpandableSection 
+              headerText="Version History"
+              variant="container">  
+            <SpaceBetween size="l">
+              <Alert type="info">
+                View and restore previous versions of published permissions. Each publish creates a new version in S3.
+              </Alert>
+              <Table
+                loading={versionHistoryLoading}
+                loadingText="Loading version history..."
+                empty={
+                  <Box textAlign="center" color="inherit">
+                    <b>No versions found</b>
+                    <Box padding={{ bottom: "s" }} variant="p" color="inherit">
+                      Versions will appear here after you publish permissions.
+                    </Box>
+                  </Box>
+                }
+                items={versionHistory}
+                columnDefinitions={[
+                  {
+                    id: "version",
+                    header: "Version",
+                    cell: (item) => item.isLatest ? (
+                      <Badge color="green">Latest</Badge>
+                    ) : (
+                      <Badge color="grey">v{item.versionId?.substring(0, 8)}</Badge>
+                    )
+                  },
+                  {
+                    id: "lastModified",
+                    header: "Published At",
+                    cell: (item) => item.lastModified ? new Date(item.lastModified).toLocaleString() : '-'
+                  },
+                  {
+                    id: "size",
+                    header: "Size",
+                    cell: (item) => item.size ? `${(item.size / 1024).toFixed(2)} KB` : '-'
+                  },
+                  {
+                    id: "actions",
+                    header: "Actions",
+                    cell: (item) => (
+                      <SpaceBetween direction="horizontal" size="xs">
+                        <Button
+                          variant="inline-link"
+                          onClick={() => {
+                            setSelectedVersion(item);
+                            handlePreviewVersion(item.versionId);
+                          }}
+                        >
+                          View
+                        </Button>
+                        {!item.isLatest && (
+                          <Button
+                            variant="inline-link"
+                            onClick={() => {
+                              setSelectedVersion(item);
+                              setRollbackModalVisible(true);
+                            }}
+                          >
+                            Rollback
+                          </Button>
+                        )}
+                      </SpaceBetween>
+                    )
+                  }
+                ]}
+              />
+              <Button
+                iconName="refresh"
+                onClick={fetchVersionHistory}
+                loading={versionHistoryLoading}
+              >
+                Refresh
+              </Button>
+            </SpaceBetween>
+          </ExpandableSection>
+          )}
         </SpaceBetween>
         <Modal
 
@@ -2597,13 +2821,13 @@ function AddPermissionPage() {
 
                 }}
                 options={
-                  // map the fields in the selectedDataset.field
-                  selectedDataset?.fields?.map((field: any) => {
-                    return {
-                      label: field,
-                      value: field
-                    }
-                  }) || []
+                  // Get fields from fieldTypes
+                  selectedDataset?.fieldTypes 
+                    ? Object.keys(JSON.parse(selectedDataset.fieldTypes)).map((field: string) => ({
+                        label: field,
+                        value: field
+                      }))
+                    : []
                 }
                 />
             </FormField>
@@ -3095,6 +3319,212 @@ function AddPermissionPage() {
                 <br />
                 <strong>Permissions to remove:</strong> {permissionsList.filter(p => p.dataSetArn === selectedDataset.dataSetArn).length}
               </Box>
+            )}
+          </SpaceBetween>
+        </Modal>
+
+        {/* Rollback Version Confirmation Modal */}
+        <Modal
+          visible={rollbackModalVisible}
+          onDismiss={() => {
+            setRollbackModalVisible(false);
+            setSelectedVersion(null);
+          }}
+          header="Rollback to Previous Version"
+          size="medium"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button 
+                  variant="link" 
+                  onClick={() => {
+                    setRollbackModalVisible(false);
+                    setSelectedVersion(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="primary" 
+                  onClick={() => selectedVersion && handleRollback(selectedVersion.versionId)}
+                >
+                  Confirm Rollback
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="l">
+            <Alert type="warning" header="Review Before Publishing">
+              This will restore permissions from a previous version. The restored permissions will be imported for your review.
+              You must click "Publish RLS in QuickSight" to apply them.
+            </Alert>
+
+            {selectedVersion && (
+              <Box>
+                <strong>Version ID:</strong> {selectedVersion.versionId?.substring(0, 16)}...
+                <br />
+                <strong>Published:</strong> {selectedVersion.lastModified ? new Date(selectedVersion.lastModified).toLocaleString() : '-'}
+                <br />
+                <strong>Size:</strong> {selectedVersion.size ? `${(selectedVersion.size / 1024).toFixed(2)} KB` : '-'}
+              </Box>
+            )}
+
+            <Alert type="info">
+              <strong>What happens next:</strong>
+              <ol>
+                <li>The previous version will be restored from S3</li>
+                <li>Permissions will be imported and shown for review</li>
+                <li>You can review and modify before publishing</li>
+                <li>Click "Publish" to apply the restored permissions</li>
+              </ol>
+            </Alert>
+          </SpaceBetween>
+        </Modal>
+
+        {/* Version Preview Modal */}
+        <Modal
+          visible={versionPreviewModalVisible}
+          onDismiss={() => {
+            setVersionPreviewModalVisible(false);
+            setSelectedVersion(null);
+            setVersionPreviewContent('');
+            setImportedPermissions([]);
+          }}
+          header={`Version Preview${selectedVersion ? ` - ${selectedVersion.versionId?.substring(0, 16)}...` : ''}`}
+          size="large"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button 
+                  variant="link" 
+                  onClick={() => {
+                    setVersionPreviewModalVisible(false);
+                    setSelectedVersion(null);
+                    setVersionPreviewContent('');
+                    setImportedPermissions([]);
+                  }}
+                >
+                  Close
+                </Button>
+                {selectedVersion && !selectedVersion.isLatest && (
+                  <Button 
+                    variant="primary" 
+                    onClick={() => {
+                      setVersionPreviewModalVisible(false);
+                      setRollbackModalVisible(true);
+                    }}
+                  >
+                    Rollback to This Version
+                  </Button>
+                )}
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="l">
+            {selectedVersion && (
+              <Box>
+                <strong>Version ID:</strong> {selectedVersion.versionId?.substring(0, 16)}...
+                <br />
+                <strong>Published:</strong> {selectedVersion.lastModified ? new Date(selectedVersion.lastModified).toLocaleString() : '-'}
+                <br />
+                <strong>Size:</strong> {selectedVersion.size ? `${(selectedVersion.size / 1024).toFixed(2)} KB` : '-'}
+                <br />
+                <strong>Status:</strong> {selectedVersion.isLatest ? <Badge color="green">Latest</Badge> : <Badge color="grey">Historical</Badge>}
+              </Box>
+            )}
+
+            {versionPreviewLoading ? (
+              <Box textAlign="center" padding="l">
+                <Spinner size="large" />
+                <Box variant="p" color="text-body-secondary">
+                  Loading version content...
+                </Box>
+              </Box>
+            ) : (
+              <>
+                <Alert type="info">
+                  <strong>Detected Format:</strong> {importFormat}
+                </Alert>
+
+                {importErrors.length > 0 && (
+                  <Alert type="error" header="Errors">
+                    <ul>
+                      {importErrors.map((error, idx) => (
+                        <li key={idx}>{error}</li>
+                      ))}
+                    </ul>
+                  </Alert>
+                )}
+
+                {importWarnings.length > 0 && (
+                  <Alert type="warning" header="Warnings">
+                    <ul>
+                      {importWarnings.map((warning, idx) => (
+                        <li key={idx}>{warning}</li>
+                      ))}
+                    </ul>
+                  </Alert>
+                )}
+
+                <Container header={<Header variant="h3">Permissions in This Version</Header>}>
+                  <Table
+                    items={importedPermissions}
+                    columnDefinitions={[
+                      {
+                        id: "userGroupName",
+                        header: "User/Group",
+                        cell: (item) => (
+                          <Box>
+                            {item.userGroupName}
+                            {!item.isResolved && (
+                              <Box color="text-status-error" fontSize="body-s">
+                                <Icon name="status-warning" /> Not found
+                              </Box>
+                            )}
+                          </Box>
+                        )
+                      },
+                      {
+                        id: "userGroupType",
+                        header: "Type",
+                        cell: (item) => (
+                          <Badge color={item.userGroupType === 'USER' ? 'blue' : 'green'}>
+                            {item.userGroupType}
+                          </Badge>
+                        )
+                      },
+                      {
+                        id: "field",
+                        header: "Field",
+                        cell: (item) => item.field
+                      },
+                      {
+                        id: "rlsValues",
+                        header: "Values",
+                        cell: (item) => item.rlsValues
+                      }
+                    ]}
+                    empty={
+                      <Box textAlign="center" color="inherit">
+                        <b>No permissions found</b>
+                      </Box>
+                    }
+                  />
+                </Container>
+
+                <ExpandableSection
+                  headerText="Raw CSV Content"
+                  variant="footer"
+                >
+                  <CodeView
+                    content={versionPreviewContent || 'No content available'}
+                    lineNumbers
+                    wrapLines
+                  />
+                </ExpandableSection>
+              </>
             )}
           </SpaceBetween>
         </Modal>

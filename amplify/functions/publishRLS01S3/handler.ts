@@ -69,12 +69,18 @@ export const handler: Schema["publishRLS01S3"]["functionHandler"] = async ( even
       throw new Error('Failed to upload CSV file to S3');
     }
 
-    logger.info('CSV file uploaded successfully', { key: `${s3BucketName}/${s3Key}` });
+    const s3VersionId = putResponse.VersionId;
+    logger.info('CSV file uploaded successfully', { 
+      key: `${s3BucketName}/${s3Key}`,
+      versionId: s3VersionId 
+    });
 
     return {
       statusCode: 200,
       message: 'CSV file uploaded successfully.',
-      csvColumns: uniqueColumns
+      csvColumns: uniqueColumns,
+      s3VersionId: s3VersionId,
+      s3Key: s3Key
     };
 
   } catch (error) {
@@ -83,6 +89,8 @@ export const handler: Schema["publishRLS01S3"]["functionHandler"] = async ( even
       statusCode: 500,
       message: 'Failed to upload CSV file to S3',
       csvColumns: [],
+      s3VersionId: undefined,
+      s3Key: undefined,
       errorType: error instanceof Error ? error.name : 'UnknownError'
     };
   }

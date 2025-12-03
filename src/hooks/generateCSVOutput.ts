@@ -45,16 +45,17 @@ export const generateCSVOutput = async (dataSetArn: string) => {
       // Fetch the dataset to get its fields
       const { data: dataset } = await client.models.DataSet.get({ dataSetArn });
       
-      if (dataset && dataset.fields && dataset.fields.length > 0) {
-        // Add all dataset fields to uniqueFields
-        dataset.fields.forEach(field => {
+      if (dataset && dataset.fieldTypes) {
+        // Get field names from fieldTypes object map
+        const fieldNames = Object.keys(JSON.parse(dataset.fieldTypes));
+        fieldNames.forEach(field => {
           if (field) {
             uniqueFields.add(field);
           }
         });
         console.log(`Added ${uniqueFields.size} dataset fields for 'view all' permissions`);
       } else {
-        console.warn("Dataset has no fields defined, CSV will only have UserARN and GroupARN");
+        console.warn("Dataset has no fieldTypes defined, CSV will only have UserARN and GroupARN");
       }
     }
     

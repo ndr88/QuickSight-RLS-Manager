@@ -1,7 +1,7 @@
 import type { Schema } from "../../data/resource"
 import { env } from '$amplify/env/createS3Bucket';
 import { v4 as uuidv4 } from 'uuid';
-import { CreateBucketCommand, BucketLocationConstraint } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, BucketLocationConstraint, PutBucketVersioningCommand } from "@aws-sdk/client-s3";
 
 import { initializeAmplify } from '../_shared/utils/amplify-config';
 import { createLogger } from '../_shared/utils/logger';
@@ -40,9 +40,22 @@ export const handler: Schema["createS3Bucket"]["functionHandler"] = async ( even
 
     if (response.$metadata.httpStatusCode === 200) {
       logger.info('S3 bucket created successfully', { bucketName });
+      
+      // Enable versioning on the bucket
+      logger.info('Enabling versioning on S3 bucket', { bucketName });
+      const versioningCommand = new PutBucketVersioningCommand({
+        Bucket: bucketName,
+        VersioningConfiguration: {
+          Status: 'Enabled'
+        }
+      });
+      
+      await s3Client.send(versioningCommand);
+      logger.info('Versioning enabled successfully', { bucketName });
+      
       return {
         statusCode: 200,
-        message: `Bucket ${bucketName} created in Region ${region}.`,
+        message: `Bucket ${bucketName} created in Region ${region} with versioning enabled.`,
         s3BucketName: bucketName
       };
     } else {

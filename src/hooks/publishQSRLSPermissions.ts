@@ -237,6 +237,8 @@ export const publishQSRLSPermissions = async ({
   setStep("step1", StepStatus.LOADING)
   // let csvColumns be an array of strings
   let csvColumns: string[] = [];
+  let s3VersionId: string | undefined;
+  let s3Key: string | undefined;
 
   addLog("Uploading new CSV file to S3.")
   try{
@@ -261,6 +263,11 @@ export const publishQSRLSPermissions = async ({
           errorType: "NoValidColumnsFound"
         }
       } 
+
+      // Capture S3 version info for history tracking
+      s3VersionId = publishRLSStep01_S3.data.s3VersionId;
+      s3Key = publishRLSStep01_S3.data.s3Key;
+      addLog(`CSV uploaded with version ID: ${s3VersionId}`);
 
       addLog(publishRLSStep01_S3.data?.message)
       setStep("step1", StepStatus.SUCCESS)
@@ -660,6 +667,11 @@ export const publishQSRLSPermissions = async ({
     addLog("Updating RLS Tool Database")
     setStep("step5", StepStatus.LOADING)
 
+    // Get current dataset to check version
+    const currentDataSet = await client.models.DataSet.get({ dataSetArn: dataSetArn });
+    const currentVersion = currentDataSet.data?.currentVersion || 0;
+    const newVersion = currentVersion + 1;
+
     // Update the Selected DataSet 
     addLog('Updating DataSet ' + dataSetId + " in RLS Tool with new RLS Info.")
 
@@ -667,7 +679,10 @@ export const publishQSRLSPermissions = async ({
       dataSetArn: dataSetArn,
       rlsToolManaged: true,
       rlsDataSetId: rlsDataSetArn,
-      rlsEnabled: "ENABLED"
+      rlsEnabled: "ENABLED",
+      currentVersion: newVersion,
+      lastPublishedVersion: newVersion,
+      lastPublishedAt: new Date().toISOString()
     })
 
     if(updateDataSetResponse.errors){
@@ -677,6 +692,30 @@ export const publishQSRLSPermissions = async ({
     }
 
     addLog("DataSet updated correctly.")
+
+    // Create PublishHistory record
+    if (s3VersionId && s3Key) {
+      addLog(`Creating version ${newVersion} history record...`);
+      
+      // Count permissions from CSV (lines - 1 for header)
+      const permissionCount = csvOutput.split("\n").filter(line => line.trim()).length - 1;
+      
+      const historyResponse = await client.models.PublishHistory.create({
+        dataSetArn: dataSetArn,
+        version: newVersion,
+        publishedAt: new Date().toISOString(),
+        s3VersionId: s3VersionId,
+        s3Key: s3Key,
+        permissionCount: permissionCount,
+        status: 'SUCCESS'
+      });
+
+      if (historyResponse.errors) {
+        addLog('Warning: Failed to create history record: ' + historyResponse.errors[0].message, "WARNING");
+      } else {
+        addLog(`Version ${newVersion} history recorded successfully.`);
+      }
+    }
   
     setStep("step5", StepStatus.SUCCESS)
     
@@ -689,6 +728,29 @@ export const publishQSRLSPermissions = async ({
     setStep("step5", StepStatus.ERROR)
     const error = e as Error
     addLog(error.name + ": " + error.message, "ERROR", 500, error.name)
+    
+    // Try to create a FAILED history record
+    if (s3VersionId && s3Key) {
+      try {
+        const currentDataSet = await client.models.DataSet.get({ dataSetArn: dataSetArn });
+        const currentVersion = currentDataSet.data?.currentVersion || 0;
+        const permissionCount = csvOutput.split("\n").filter(line => line.trim()).length - 1;
+        
+        await client.models.PublishHistory.create({
+          dataSetArn: dataSetArn,
+          version: currentVersion + 1,
+          publishedAt: new Date().toISOString(),
+          s3VersionId: s3VersionId,
+          s3Key: s3Key,
+          permissionCount: permissionCount,
+          status: 'FAILED',
+          errorMessage: error.message
+        });
+      } catch (historyError) {
+        console.error('Failed to create FAILED history record:', historyError);
+      }
+    }
+    
     return {
       status: 500,
       message: error.name + ": " + error.message
