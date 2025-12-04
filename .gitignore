@@ -31,4 +31,8 @@ src/pages/ManagePermissionsPage-v2.tsx
 src/pages/Homepage-v2.tsx
 
 # testing 
-.test-scripts
+test-scripts
+Kiro-Helper
+
+# draw-io middle files
+Guide/images/drawio/.$*
