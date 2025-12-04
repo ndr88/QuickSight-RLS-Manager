@@ -294,6 +294,12 @@ function AddPermissionPage() {
   
   // API Limitations Alert
   const [apiLimitationsAlertDismissed, setApiLimitationsAlertDismissed] = useState<boolean>(false);
+  
+  // Copy Permissions Modal
+  const [copyPermissionsModalVisible, setCopyPermissionsModalVisible] = useState<boolean>(false);
+  const [copyFromDataset, setCopyFromDataset] = useState<SelectedDataset | null>(null);
+  const [copyFromPermissions, setCopyFromPermissions] = useState<any[]>([]);
+  const [copyingPermissions, setCopyingPermissions] = useState<boolean>(false);
 
   /**
    * Add Log to output text area
@@ -643,6 +649,62 @@ function AddPermissionPage() {
       console.error('Error deleting permission:', err);
     }
   }
+
+  // Fetch permissions from another dataset
+  const fetchPermissionsFromDataset = async (dataSetArn: string) => {
+    try {
+      const response = await client.models.Permission.list({
+        filter: {
+          dataSetArn: {
+            eq: dataSetArn
+          }
+        }
+      });
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching permissions:', err);
+      return [];
+    }
+  };
+
+  // Copy permissions from another dataset
+  const copyPermissionsFromDataset = async () => {
+    if (!copyFromDataset || !selectedDataset) return;
+    
+    setCopyingPermissions(true);
+    try {
+      addLog(`Copying ${copyFromPermissions.length} permission(s) from ${copyFromDataset.label} to ${selectedDataset.label}...`);
+      
+      // Determine status based on target dataset API manageability
+      const permissionStatus = selectedDataset.apiManageable === false ? 'MANUAL' : 'PENDING';
+      
+      for (const perm of copyFromPermissions) {
+        await client.models.Permission.create({
+          dataSetArn: selectedDataset.dataSetArn,
+          userGroupArn: perm.userGroupArn,
+          field: perm.field,
+          rlsValues: perm.rlsValues,
+          status: permissionStatus
+        });
+      }
+      
+      addLog(`✓ Successfully copied ${copyFromPermissions.length} permission(s)`);
+      
+      // Refresh permissions list
+      await fetchPermissions();
+      
+      // Close modal and reset
+      setCopyPermissionsModalVisible(false);
+      setCopyFromDataset(null);
+      setCopyFromPermissions([]);
+      
+    } catch (err) {
+      console.error('Error copying permissions:', err);
+      addLog('Error copying permissions: ' + err, 'ERROR', 500, 'CopyPermissionsError');
+    } finally {
+      setCopyingPermissions(false);
+    }
+  };
 
   // Delete All Permissions for a User/Group (for the current dataset only)
   const deleteAllPermissionsForUserGroup = async (userGroupArn: string, dataSetArn: string) => {
@@ -2216,6 +2278,11 @@ function AddPermissionPage() {
                           iconName: "upload"
                         },
                         {
+                          text: "Copy permissions from",
+                          id: "copy-from",
+                          iconName: "copy"
+                        },
+                        {
                           text: "Publish RLS in QuickSight",
                           id: "publish-rls",
                           iconName: "thumbs-up",
@@ -2237,6 +2304,8 @@ function AddPermissionPage() {
                       onItemClick={({ detail }) => {
                         if (detail.id === "import-csv") {
                           document.getElementById('csv-import-input')?.click();
+                        } else if (detail.id === "copy-from") {
+                          setCopyPermissionsModalVisible(true);
                         } else if (detail.id === "publish-rls") {
                           publishQSRLSPermissionsClickHandler();
                         } else if (detail.id === "manage-visibility") {
@@ -3686,6 +3755,117 @@ function AddPermissionPage() {
                   />
                 </ExpandableSection>
               </>
+            )}
+          </SpaceBetween>
+        </Modal>
+
+        {/* Copy Permissions Modal */}
+        <Modal
+          visible={copyPermissionsModalVisible}
+          onDismiss={() => {
+            setCopyPermissionsModalVisible(false);
+            setCopyFromDataset(null);
+            setCopyFromPermissions([]);
+          }}
+          header="Copy Permissions from Another Dataset"
+          size="large"
+          footer={
+            <Box float="right">
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button 
+                  variant="link" 
+                  onClick={() => {
+                    setCopyPermissionsModalVisible(false);
+                    setCopyFromDataset(null);
+                    setCopyFromPermissions([]);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="primary" 
+                  onClick={copyPermissionsFromDataset}
+                  loading={copyingPermissions}
+                  disabled={!copyFromDataset || copyFromPermissions.length === 0}
+                >
+                  Copy {copyFromPermissions.length} Permission(s)
+                </Button>
+              </SpaceBetween>
+            </Box>
+          }
+        >
+          <SpaceBetween size="l">
+            <Alert type="info">
+              Select a dataset to copy permissions from. The permissions will be copied to <strong>{selectedDataset?.label}</strong> with status <Badge color={selectedDataset?.apiManageable === false ? "severity-medium" : "blue"}>{selectedDataset?.apiManageable === false ? "Manual" : "Pending"}</Badge>.
+            </Alert>
+
+            <FormField label="Select Dataset">
+              <Select
+                selectedOption={copyFromDataset as any}
+                options={datasetOptions.filter(opt => opt.value !== selectedDataset?.value)}
+                onChange={async ({ detail }) => {
+                  const selectedDetails = datasetsList.find(ds => ds.dataSetId === detail.selectedOption.value);
+                  if (selectedDetails) {
+                    const dataset: SelectedDataset = {
+                      value: detail.selectedOption.value || '',
+                      label: detail.selectedOption.label || '',
+                      description: detail.selectedOption.description,
+                      dataSetArn: selectedDetails.dataSetArn,
+                      dataSetId: selectedDetails.dataSetId,
+                      dataSetName: selectedDetails.name,
+                      region: selectedDetails.dataSetRegion,
+                      fieldTypes: selectedDetails.fieldTypes,
+                      rlsToolManaged: selectedDetails.rlsToolManaged,
+                      rlsDataSetId: selectedDetails.rlsDataSetId || "",
+                      rlsEnabled: selectedDetails.rlsEnabled,
+                      rlsS3Key: selectedDetails.glueS3Id,
+                      rlsS3BucketName: selectedRegion?.value ? regionsList?.find(r => r.regionName === selectedRegion.value)?.s3BucketName : undefined,
+                      lastUpdatedTime: selectedDetails.updatedAt,
+                      apiManageable: selectedDetails.apiManageable
+                    };
+                    setCopyFromDataset(dataset);
+                    
+                    // Fetch permissions from selected dataset
+                    const perms = await fetchPermissionsFromDataset(selectedDetails.dataSetArn);
+                    setCopyFromPermissions(perms);
+                  }
+                }}
+                placeholder="Choose a dataset"
+                filteringType="auto"
+              />
+            </FormField>
+
+            {copyFromDataset && (
+              <Container header={<Header variant="h3">Permissions Preview ({copyFromPermissions.length})</Header>}>
+                {copyFromPermissions.length === 0 ? (
+                  <Box textAlign="center" color="inherit">
+                    <p>No permissions found in this dataset</p>
+                  </Box>
+                ) : (
+                  <Table
+                    items={copyFromPermissions}
+                    columnDefinitions={[
+                      {
+                        id: "userGroup",
+                        header: "User/Group",
+                        cell: item => item.userGroupArn.split(':')[5].split('/').slice(2).join('/')
+                      },
+                      {
+                        id: "field",
+                        header: "Field",
+                        cell: item => item.field
+                      },
+                      {
+                        id: "values",
+                        header: "Values",
+                        cell: item => item.rlsValues
+                      }
+                    ]}
+                    variant="embedded"
+                    stripedRows
+                  />
+                )}
+              </Container>
             )}
           </SpaceBetween>
         </Modal>
