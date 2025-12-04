@@ -15,15 +15,17 @@ The RLS data are stored in DynamoDB. When the RLS is pushed to QuickSight, a CSV
 ![Architecture](/Guide/images/RLS-Tool-Architecture.png)
 
 ## Data Models
-These Dynamo DB table are used to store the Permissions data and manage all the RLS creation.
+These DynamoDB tables are used to store the Permissions data and manage all the RLS creation.
 The DataModel definition is in `amplify/data/resource.ts`.
 
 * [AccountDetails](#accountdetails)
-* [ManagedRegions](#managedregion)
+* [ManagedRegion](#managedregion)
 * [Namespace](#namespace)
 * [DataSet](#dataset)
 * [UserGroup](#usergroup)
 * [Permission](#permission)
+* [RLSDataSetVisibility](#rlsdatasetvisibility)
+* [PublishHistory](#publishhistory)
 
 ![Dynamo DB schemas](/Guide/images/DynamoDBSchema.png)
 
@@ -106,11 +108,18 @@ Namespace: a
 
 Since the ID for the table is the `dataSetArn`, also in this case the table can be considered ready for multi-account management, although having the `accountId` as field can be useful.
 
+**Key Fields**:
 * `rlsEnabled`: indicates if the selected DataSet has any RLS enabled
-* `rlsToolManaged`: if `rlsEnabled` is true, this field states if RLS is managed through **RLS Manager** or not.
-* `rlsDataSetId`: if `rlsEnabled` is true, this is the DataSet **ARN** of the DataSet used as RLS for the selected DataSet. :warning: The name of the field should be more properly `rlsDataSetArn`. Will change it in future releases.
-* `toolCreated`: this states if the DataSet has bee created by the RLS Manager. This info cannot be fetched from the APIs. So, for this field in particular, if the data is modified, there's no way to fetch back the info. It will only be possibile to fix it manually. :warning: I've Added in a new release a `tag` to the RLS DataSet `RLS-Manager: true`, but the fetch of this info is still to be implemented.
-* `glueS3Id`: this value is only used if the DataSet is a RLS DataSet created with RLS Manager and indicates the ID of the GlueTable and the S3 Key used to store the RLS Data for QuickSight
+* `rlsToolManaged`: if `rlsEnabled` is true, this field states if RLS is managed through **RLS Manager** or not
+* `rlsDataSetId`: if `rlsEnabled` is true, this is the DataSet **ARN** of the DataSet used as RLS for the selected DataSet
+* `isRls`: indicates if this DataSet itself is an RLS DataSet
+* `newDataPrep`: indicates if the DataSet uses the new QuickSight data prep experience (has DataPrepConfiguration)
+* `toolCreated`: states if the DataSet has been created by the RLS Manager (tagged with `RLS-Manager: true`)
+* `glueS3Id`: if this is an RLS DataSet created with RLS Manager, indicates the ID of the GlueTable and the S3 Key
+* `fieldTypes`: JSON string containing field name to type mapping
+* `currentVersion`: current version number (increments on each publish)
+* `lastPublishedVersion`: last successfully published version
+* `lastPublishedAt`: timestamp of last successful publish
 
 :warning: Could be useful to directly connect ManagedRegion with DataSet (belongsTo - HasMany). 
 
@@ -118,21 +127,28 @@ Since the ID for the table is the `dataSetArn`, also in this case the table can 
 DataSet: a
   .model({
     dataSetArn: a.id().required(),                  // Unique ARN identifier for the DataSet
-    dataSetId: a.string().required(),               // This is the ID of the DataSet. Can be extracted from the ARN, but it's useful to have it directly available to use
+    dataSetId: a.string().required(),               // This is the ID of the DataSet
     name: a.string().required(),                    // The Name of the QuickSight DataSet
     rlsEnabled: a.enum(Object.values(rlsStatus)),   // indicates if the selected DataSet has any RLS enabled
-    rlsToolManaged: a.boolean().required(),         // states if RLS is managed through **RLS Manager** or not.
-    rlsDataSetId: a.string(),                       // This is the ARN (not the ID) of the RLS DataSet applied to the selected Dataset
+    rlsToolManaged: a.boolean().required(),         // states if RLS is managed through **RLS Manager** or not
+    rlsDataSetId: a.string(),                       // This is the ARN of the RLS DataSet applied to the selected Dataset
+    isRls: a.boolean().required(),                  // Indicates if this DataSet is an RLS DataSet
+    newDataPrep: a.boolean().required(),            // Indicates if dataset uses new data prep mode
     apiManageable: a.boolean().required(),          // Indicates if the dataset is manageable by API
     toolCreated: a.boolean().required(),            // Indicates if the dataset is managed by this Tool
     dataSetRegion: a.string().required(),           // The DataSet Region
-    glueS3Id: a.string(),                           // if this is a RLS DataSet, then this indicates the ID of the GlueTable and the S3 Key
+    glueS3Id: a.string(),                           // if this is a RLS DataSet, ID of GlueTable and S3 Key
     spiceCapacityInBytes: a.integer(),              // The DataSet SPICE Capacity used (if import mode is SPICE)
     createdTime: a.string(),                        // The DataSet creation Time
     importMode: a.string(),                         // Import mode: can be DIRECT_QUERY or SPICE
     lastUpdatedTime: a.string(),                    // DataSet last updated time
-    fields: a.string().array(),                     // Array of strings containing the list of the DataSet fields
-    permissions: a.hasMany('Permission', 'dataSetArn'),   // A DataSet can have many Permissions
+    fieldTypes: a.string(),                         // JSON string: field name to type mapping
+    currentVersion: a.integer(),                    // Current version number
+    lastPublishedVersion: a.integer(),              // Last successfully published version
+    lastPublishedAt: a.datetime(),                  // When last published to QuickSight
+    permissions: a.hasMany('Permission', 'dataSetArn'),         // A DataSet can have many Permissions
+    rlsVisibility: a.hasMany('RLSDataSetVisibility', 'dataSetArn'),  // RLS DataSet visibility permissions
+    publishHistory: a.hasMany('PublishHistory', 'dataSetArn'), // Publish history records
     createdAt: a.datetime(),                        // Utility info
     updatedAt: a.datetime()                         // Utility info
   })
@@ -173,6 +189,10 @@ This is the core table for all the solution. Here the Permissions are stored as 
 
 In this specific case we do not have an ARN, so the ID for this table is completely managed by the solution: there is a field called `id` not visible in the schema definition.
 
+**Key Fields**:
+* `status`: tracks the permission state - PENDING (not yet published), PUBLISHED (applied to QuickSight), FAILED (publish failed), MANUAL (non-API manageable dataset)
+* `lastPublishedAt`: timestamp of when the permission was last successfully published to QuickSight
+
 ```ts
 Permission: a
   .model({
@@ -182,37 +202,110 @@ Permission: a
     userGroup: a.belongsTo('UserGroup', 'userGroupArn'),  // Model name and foreign key field
     field: a.string().required(),                         // The DataSet Field we are using in this Permission row
     rlsValues: a.string().required(),                     // Comma-separated list of RLS values
+    status: a.enum(['PENDING', 'PUBLISHED', 'FAILED', 'MANUAL']), // Status of the permission
+    lastPublishedAt: a.datetime(),                        // When last successfully published to QuickSight
     createdAt: a.datetime(),                              // Utility info
     updatedAt: a.datetime()                               // Utility info
   })  
   .authorization((allow) => [allow.authenticated()]),     // Only authenticated users can access this table
 ```
 
+### RLSDataSetVisibility
+This table manages who can see and access RLS DataSets in QuickSight. It controls the permissions on the RLS DataSets themselves (not the main DataSets).
+
+**Key Fields**:
+* `rlsDataSetArn`: the ARN of the RLS DataSet
+* `dataSetArn`: the main DataSet ARN (for reference)
+* `userGroupArn`: the user or group ARN
+* `permissionLevel`: OWNER (full access) or VIEWER (read-only)
+
+```ts
+RLSDataSetVisibility: a
+  .model({
+    rlsDataSetArn: a.string().required(),                 // The RLS dataset ARN
+    dataSetArn: a.string().required(),                    // The main dataset ARN (for reference)
+    userGroupArn: a.string().required(),                  // User or group ARN
+    permissionLevel: a.enum(['OWNER', 'VIEWER']),         // OWNER or VIEWER
+    dataSet: a.belongsTo('DataSet', 'dataSetArn'),
+    userGroup: a.belongsTo('UserGroup', 'userGroupArn'),
+    createdAt: a.datetime(),
+    updatedAt: a.datetime()
+  })
+  .authorization((allow) => [allow.authenticated()]),
+```
+
+### PublishHistory
+This table tracks the history of RLS publishes for audit and rollback purposes. Each publish creates a new version record.
+
+**Key Fields**:
+* `version`: version number (increments with each publish)
+* `publishedAt`: timestamp of the publish
+* `s3VersionId`: S3 version ID of the CSV file (enables rollback)
+* `status`: SUCCESS or FAILED
+
+```ts
+PublishHistory: a
+  .model({
+    dataSetArn: a.string().required(),                    // The dataset this publish belongs to
+    version: a.integer().required(),                      // Version number
+    publishedAt: a.datetime().required(),                 // When published
+    publishedBy: a.string(),                              // User who published (optional)
+    s3VersionId: a.string(),                              // S3 version ID of the CSV file
+    s3Key: a.string(),                                    // S3 key of the CSV file
+    permissionCount: a.integer().required(),              // Number of permissions in this version
+    status: a.enum(['SUCCESS', 'FAILED']),                // Publish status
+    errorMessage: a.string(),                             // Error message if failed
+    dataSet: a.belongsTo('DataSet', 'dataSetArn'),
+    createdAt: a.datetime(),
+    updatedAt: a.datetime()
+  })
+  .authorization((allow) => [allow.authenticated()]),
+```
+
 
 ## Lambda Functions
-The whole solutions uses a set of AWS Lambda functions.
-Some of these functions are part of bigger single operations, but I separated them in smaller functions to have an easier code management, but also to correctly manage the timeouts, retry and so on.
+The whole solution uses a set of AWS Lambda functions.
+Some of these functions are part of bigger single operations, but I separated them into smaller functions to have easier code management, and to correctly manage timeouts, retries, and so on.
 
-This is the list of the Lambda Functions (click on each one to see the details):
+This is the complete list of Lambda Functions organized by category. Click on each one to see the detailed documentation:
 
-* [TODO - checkQSManagementRegionAccess](/Guide/functions/checkQSManagementRegionAccess)
-* [TODO - createGlueDatabase](/Guide/functions/createGlueDatabase)
-* [TODO - createQSDataSource](/Guide/functions/createQSDataSource)
-* [TODO - createS3Bucket](/Guide/functions/createS3Bucket)
-* [TODO - deleteDataSetFromQS](/Guide/functions/deleteDataSetFromQS)
-* [TODO - deleteDataSetGlueTable](/Guide/functions/deleteDataSetGlueTable)
-* [TODO - deleteDataSetS3Objects](/Guide/functions/deleteDataSetS3Objects)
-* [TODO - fetchDataSetFieldsFromQS](/Guide/functions/fetchDataSetFieldsFromQS)
-* [TODO - fetchDataSetsFromQS](/Guide/functions/fetchDataSetsFromQS)
-* [TODO - fetchGroupsFromQS](/Guide/functions/fetchGroupsFromQS)
-* [TODO - fetchNamespacesFromQS](/Guide/functions/fetchNamespacesFromQS)
-* [TODO - fetchUsersFromQS](/Guide/functions/fetchUsersFromQS)
-* [TODO - getQSSpiceCapacity](/Guide/functions/getQSSpiceCapacity)
-* [publishRLS00ResourcesValidation](/Guide/functions/publishRLS00ResourcesValidation)
-* [publishRLS01S3](/Guide/functions/publishRLS01S3)
-* [publishRLS02Glue](/Guide/functions/publishRLS02Glue)
-* [publishRLS03QsRLSDataSet](/Guide/functions/publishRLS03QsRLSDataSet)
-* [publishRLS04QsUpdateMainDataSetRLS](/Guide/functions/publishRLS04QsUpdateMainDataSetRLS)
-* [publishRLS99QsCheckIngestion](/Guide/functions/publishRLS99QsCheckIngestion)
-* [TODO - removeRLSDataSet](/Guide/functions/removeRLSDataSet)
-* [setAccount](/Guide/functions/setAccount)
+### RLS Publishing Workflow Functions
+* [publishRLS00ResourcesValidation](../amplify/functions/publishRLS00ResourcesValidation/README.md) - Step 0: Validates resources before publishing
+* [publishRLS01S3](../amplify/functions/publishRLS01S3/README.md) - Step 1: Uploads CSV to S3
+* [publishRLS02Glue](../amplify/functions/publishRLS02Glue/README.md) - Step 2: Creates/updates Glue table
+* [publishRLS03QsRLSDataSet](../amplify/functions/publishRLS03QsRLSDataSet/README.md) - Step 3: Creates/updates RLS DataSet
+* [publishRLS04QsUpdateMainDataSetRLS](../amplify/functions/publishRLS04QsUpdateMainDataSetRLS/README.md) - Step 4: Applies RLS to main DataSet
+* [publishRLS99QsCheckIngestion](../amplify/functions/publishRLS99QsCheckIngestion/README.md) - Step 99: Checks SPICE ingestion status
+
+### Resource Creation Functions
+* [createS3Bucket](../amplify/functions/createS3Bucket/README.md) - Creates S3 bucket for RLS data
+* [createGlueDatabase](../amplify/functions/createGlueDatabase/README.md) - Creates Glue Database
+* [createQSDataSource](../amplify/functions/createQSDataSource/README.md) - Creates QuickSight DataSource
+
+### Data Fetching Functions
+* [fetchDataSetsFromQS](../amplify/functions/fetchDataSetsFromQS/README.md) - Lists QuickSight DataSets
+* [fetchDataSetFieldsFromQS](../amplify/functions/fetchDataSetFieldsFromQS/README.md) - Gets DataSet fields and SPICE capacity
+* [fetchGroupsFromQS](../amplify/functions/fetchGroupsFromQS/README.md) - Lists QuickSight groups
+* [fetchUsersFromQS](../amplify/functions/fetchUsersFromQS/README.md) - Lists QuickSight users
+* [fetchNamespacesFromQS](../amplify/functions/fetchNamespacesFromQS/README.md) - Lists QuickSight namespaces
+* [fetchRLSDataSetPermissions](../amplify/functions/fetchRLSDataSetPermissions/README.md) - Gets RLS DataSet permissions
+
+### Data Deletion Functions
+* [deleteDataSetFromQS](../amplify/functions/deleteDataSetFromQS/README.md) - Deletes QuickSight DataSet
+* [deleteDataSetGlueTable](../amplify/functions/deleteDataSetGlueTable/README.md) - Deletes Glue table
+* [deleteDataSetS3Objects](../amplify/functions/deleteDataSetS3Objects/README.md) - Deletes S3 objects
+
+### Utility Functions
+* [checkQSManagementRegionAccess](../amplify/functions/checkQSManagementRegionAccess/README.md) - Validates QuickSight access
+* [getQSSpiceCapacity](../amplify/functions/getQSSpiceCapacity/README.md) - Gets SPICE capacity metrics
+* [removeRLSDataSet](../amplify/functions/removeRLSDataSet/README.md) - Removes RLS from DataSet
+* [setAccount](../amplify/functions/setAccount/README.md) - Initializes account configuration
+* [updateRLSDataSetPermissions](../amplify/functions/updateRLSDataSetPermissions/README.md) - Updates RLS DataSet permissions
+
+### Version Management Functions
+* [listPublishHistory](../amplify/functions/listPublishHistory/README.md) - Lists version history
+* [getVersionContent](../amplify/functions/getVersionContent/README.md) - Gets content of a specific version
+* [rollbackToVersion](../amplify/functions/rollbackToVersion/README.md) - Rolls back to a previous version
+
+### Shared Utilities
+* [_shared](../amplify/functions/_shared/README.md) - Common utilities, AWS clients, error handling, and logging
