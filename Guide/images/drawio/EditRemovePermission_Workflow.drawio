@@ -1,0 +1,234 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="EditRemovePermissionWorkflow" name="Edit/Remove Permission Workflow">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Title -->
+        <mxCell id="title" value="Edit Permission" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="40" y="10" width="200" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- User Action Edit -->
+        <mxCell id="user-edit" value="User clicks&#xa;'Edit Permission'" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="50" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Load Permission -->
+        <mxCell id="load" value="Load Permission&#xa;from DynamoDB" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="30" y="150" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="user-edit" target="load">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Show Form -->
+        <mxCell id="form-edit" value="Show Edit Form&#xa;• DataSet (readonly)&#xa;• User/Group (readonly)&#xa;• Field (readonly)&#xa;• RLS Values (editable)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;" vertex="1" parent="1">
+          <mxGeometry x="20" y="250" width="180" height="110" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow2" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="load" target="form-edit">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Validation -->
+        <mxCell id="validate-edit" value="Validate Changes&#xa;• Values not empty?&#xa;• Values changed?" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;" vertex="1" parent="1">
+          <mxGeometry x="30" y="400" width="160" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow3" value="Save" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="form-edit" target="validate-edit">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Valid? -->
+        <mxCell id="decision-edit" value="Valid?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="50" y="510" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow4" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="validate-edit" target="decision-edit">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Error Path -->
+        <mxCell id="error-edit" value="ERROR:&#xa;Show validation&#xa;errors" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="240" y="520" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-error-edit" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision-edit" target="error-edit">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Update DB -->
+        <mxCell id="update-db" value="Update DynamoDB&#xa;Save new RLS values" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="30" y="630" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow5" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="decision-edit" target="update-db">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Trigger Publish -->
+        <mxCell id="publish-edit" value="Trigger Publish RLS&#xa;(if auto-publish enabled)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="30" y="730" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow6" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="update-db" target="publish-edit">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Success Edit -->
+        <mxCell id="success-edit" value="SUCCESS!&#xa;Permission Updated" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="240" y="745" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-success-edit" value="" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;rounded=1;" edge="1" parent="1" source="publish-edit" target="success-edit">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- REMOVE SECTION -->
+        <mxCell id="divider" value="" style="endArrow=none;dashed=1;html=1;strokeWidth=2;strokeColor=#666666;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="440" y="10" as="sourcePoint" />
+            <mxPoint x="440" y="820" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Title Remove -->
+        <mxCell id="title-remove" value="Remove Permission" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="480" y="10" width="200" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- User Action Remove -->
+        <mxCell id="user-remove" value="User clicks&#xa;'Remove Permission'" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="480" y="50" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Confirmation -->
+        <mxCell id="confirm-remove" value="Confirmation Dialog&#xa;'Delete this permission?'" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="480" y="150" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-r1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="user-remove" target="confirm-remove">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Confirmed? -->
+        <mxCell id="decision-remove" value="User&#xa;Confirms?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="500" y="250" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-r2" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="confirm-remove" target="decision-remove">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Cancel Path -->
+        <mxCell id="cancel-remove" value="Operation&#xa;Cancelled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="700" y="260" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-cancel" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision-remove" target="cancel-remove">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Delete from DB -->
+        <mxCell id="delete-db" value="Delete from DynamoDB&#xa;Remove Permission record" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="480" y="370" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-r3" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="decision-remove" target="delete-db">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Delete Success? -->
+        <mxCell id="decision-delete" value="Deleted?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="500" y="470" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-r4" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="delete-db" target="decision-delete">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Error Delete -->
+        <mxCell id="error-delete" value="ERROR:&#xa;Database error" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="700" y="480" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-error-delete" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision-delete" target="error-delete">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Trigger Publish Remove -->
+        <mxCell id="publish-remove" value="Trigger Publish RLS&#xa;(if auto-publish enabled)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="480" y="590" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-r5" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="decision-delete" target="publish-remove">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Success Remove -->
+        <mxCell id="success-remove" value="SUCCESS!&#xa;Permission Removed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="490" y="690" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-success-remove" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="publish-remove" target="success-remove">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Legend -->
+        <mxCell id="legend-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="180" height="200" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="180" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-1" value="Lambda Function" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="80" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-2" value="Decision Point" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="930" y="115" width="80" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-3" value="Error State" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="165" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-4" value="User Input" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="200" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- Notes -->
+        <mxCell id="notes-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="880" y="260" width="180" height="240" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="notes-title" value="Notes:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="890" y="270" width="160" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="notes-text" value="EDIT:&#xa;• Only RLS values can&#xa;  be changed&#xa;• DataSet, User, Field&#xa;  are readonly (key)&#xa;• Triggers re-publish&#xa;&#xa;REMOVE:&#xa;• Requires confirmation&#xa;• Cannot be undone&#xa;• Triggers re-publish&#xa;&#xa;BOTH:&#xa;• Auto-publish optional&#xa;• Changes take effect&#xa;  after publish&#xa;• Multiple edits/removes&#xa;  can be batched" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="295" width="160" height="195" as="geometry" />
+        </mxCell>
+        
+        <!-- Key Difference -->
+        <mxCell id="diff-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="880" y="520" width="180" height="140" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="diff-title" value="Key Difference:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="890" y="530" width="160" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="diff-text" value="EDIT:&#xa;Updates existing record&#xa;Modifies RLS values only&#xa;&#xa;REMOVE:&#xa;Deletes entire record&#xa;Requires confirmation&#xa;Cannot be undone" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="555" width="160" height="95" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

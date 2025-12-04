@@ -1,0 +1,230 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="RollbackWorkflow" name="Rollback to Version Workflow">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- User Action -->
+        <mxCell id="user-1" value="User clicks&#xa;'View History'" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Step 1: List History -->
+        <mxCell id="step1" value="listPublishHistory&#xa;Fetch all S3 versions&#xa;with metadata" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="30" y="140" width="160" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="user-1" target="step1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Versions Found? -->
+        <mxCell id="decision1" value="Versions&#xa;Found?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="50" y="250" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow1-1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="step1" target="decision1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- No History Path -->
+        <mxCell id="no-history" value="No History&#xa;Available" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="250" y="260" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-no-history" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision1" target="no-history">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Display History -->
+        <mxCell id="display" value="Display Version List&#xa;• Timestamp&#xa;• User who published&#xa;• Row count&#xa;• Version ID" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;" vertex="1" parent="1">
+          <mxGeometry x="20" y="370" width="180" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow2" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="decision1" target="display">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- User Selection -->
+        <mxCell id="select" value="User Selects&#xa;Version to Restore" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="510" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow3" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="display" target="select">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Confirmation -->
+        <mxCell id="confirm" value="Confirmation Dialog&#xa;'Restore this version?'" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="30" y="610" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow4" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="select" target="confirm">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Confirmed? -->
+        <mxCell id="decision2" value="User&#xa;Confirms?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="50" y="710" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow5" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="confirm" target="decision2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Cancel Path -->
+        <mxCell id="cancel" value="Operation&#xa;Cancelled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="250" y="720" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-cancel" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision2" target="cancel">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Continue to next column -->
+        <mxCell id="connector1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0;entryY=0.5;rounded=1;" edge="1" parent="1" source="decision2" target="step-rollback">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Step: Rollback -->
+        <mxCell id="step-rollback" value="rollbackToVersion&#xa;Copy selected S3 version&#xa;as latest version" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="480" y="40" width="180" height="70" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Rollback Success? -->
+        <mxCell id="decision3" value="Rollback&#xa;Success?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="510" y="150" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow6" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="step-rollback" target="decision3">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Error Path -->
+        <mxCell id="error-rollback" value="ERROR:&#xa;Failed to copy&#xa;S3 version" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="710" y="160" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-error" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision3" target="error-rollback">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Step: Get Version Content -->
+        <mxCell id="step-content" value="getVersionContent&#xa;Read restored CSV&#xa;from S3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="480" y="270" width="180" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow7" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="decision3" target="step-content">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Step: Update Glue -->
+        <mxCell id="step-glue" value="publishRLS02Glue&#xa;Update Glue Table&#xa;with restored data" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="480" y="380" width="180" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow8" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="step-content" target="step-glue">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Glue Updated? -->
+        <mxCell id="decision4" value="Glue&#xa;Updated?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="510" y="490" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow9" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="step-glue" target="decision4">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Error Path 2 -->
+        <mxCell id="error-glue" value="ERROR:&#xa;Glue update&#xa;failed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="710" y="500" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-error2" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision4" target="error-glue">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Step: Refresh QS DataSet -->
+        <mxCell id="step-refresh" value="Trigger SPICE Refresh&#xa;QuickSight ingests&#xa;restored data" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="480" y="610" width="180" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow10" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="decision4" target="step-refresh">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Step: Check Ingestion -->
+        <mxCell id="step-check" value="publishRLS99QsCheckIngestion&#xa;Wait for ingestion&#xa;to complete" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="480" y="720" width="180" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow11" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="step-refresh" target="step-check">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Success -->
+        <mxCell id="success" value="SUCCESS!&#xa;Version Restored&#xa;RLS Active" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="250" y="720" width="140" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-success" value="" style="endArrow=classic;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;rounded=1;" edge="1" parent="1" source="step-check" target="success">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Legend -->
+        <mxCell id="legend-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="900" y="40" width="180" height="200" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="900" y="40" width="180" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-1" value="Lambda Function" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="910" y="80" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-2" value="Decision Point" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="950" y="115" width="80" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-3" value="Error State" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="910" y="165" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-4" value="User Action" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="910" y="200" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- Notes -->
+        <mxCell id="notes-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="900" y="260" width="180" height="220" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="notes-title" value="Notes:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="910" y="270" width="160" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="notes-text" value="• S3 versioning keeps&#xa;  all publish history&#xa;&#xa;• Rollback creates a&#xa;  NEW version (doesn't&#xa;  delete current)&#xa;&#xa;• User can rollback&#xa;  to any previous&#xa;  version&#xa;&#xa;• After rollback, data&#xa;  is re-ingested to&#xa;  QuickSight&#xa;&#xa;• Original version&#xa;  remains in history" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="910" y="295" width="160" height="175" as="geometry" />
+        </mxCell>
+        
+        <!-- Version Info -->
+        <mxCell id="info-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="900" y="500" width="180" height="160" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="info-title" value="Version Metadata:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="910" y="510" width="160" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="info-text" value="Each version stores:&#xa;&#xa;• Timestamp&#xa;• User who published&#xa;• Row count&#xa;• S3 Version ID&#xa;• File size&#xa;• Checksum&#xa;&#xa;Displayed in reverse&#xa;chronological order" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="910" y="535" width="160" height="115" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

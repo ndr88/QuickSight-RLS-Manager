@@ -1,0 +1,216 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="BulkExportWorkflow" name="Bulk Permission Export Workflow">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- User Action -->
+        <mxCell id="user-1" value="User clicks&#xa;'Export Permissions'" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Show Options -->
+        <mxCell id="options" value="Show Export Options&#xa;• All DataSets&#xa;• Specific DataSet&#xa;• Date range filter&#xa;• Include/Exclude fields" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;" vertex="1" parent="1">
+          <mxGeometry x="30" y="140" width="180" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="user-1" target="options">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- User Selection -->
+        <mxCell id="select" value="User Selects Options&#xa;&amp; Confirms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="280" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow2" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="options" target="select">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Confirmed? -->
+        <mxCell id="decision1" value="User&#xa;Confirms?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="60" y="380" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow3" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="select" target="decision1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Cancel Path -->
+        <mxCell id="cancel" value="Operation&#xa;Cancelled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="260" y="390" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-cancel" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision1" target="cancel">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Query DynamoDB -->
+        <mxCell id="query" value="Query DynamoDB&#xa;Fetch permissions&#xa;based on filters" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="40" y="500" width="160" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow4" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="decision1" target="query">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Data Found? -->
+        <mxCell id="decision2" value="Permissions&#xa;Found?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="60" y="610" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow5" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="query" target="decision2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Warning No Data -->
+        <mxCell id="warning" value="WARNING:&#xa;No permissions&#xa;to export" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="260" y="620" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-warning" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision2" target="warning">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Continue to next column -->
+        <mxCell id="connector1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0;entryY=0.5;rounded=1;" edge="1" parent="1" source="decision2" target="enrich">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Enrich Data -->
+        <mxCell id="enrich" value="Enrich Data&#xa;• Resolve DataSet names&#xa;• Resolve User/Group names&#xa;• Format timestamps&#xa;• Add metadata" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;" vertex="1" parent="1">
+          <mxGeometry x="480" y="40" width="180" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Generate CSV -->
+        <mxCell id="generate" value="Generate CSV&#xa;• Create headers&#xa;• Format rows&#xa;• Escape special chars&#xa;• UTF-8 encoding" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;" vertex="1" parent="1">
+          <mxGeometry x="480" y="180" width="180" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow6" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="enrich" target="generate">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: CSV Generated? -->
+        <mxCell id="decision3" value="CSV&#xa;Generated?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="510" y="320" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow7" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="generate" target="decision3">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Error Generate -->
+        <mxCell id="error-generate" value="ERROR:&#xa;Failed to generate&#xa;CSV file" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="710" y="330" width="130" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-error" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision3" target="error-generate">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Add Metadata -->
+        <mxCell id="metadata" value="Add Export Metadata&#xa;• Export timestamp&#xa;• User who exported&#xa;• Filter criteria&#xa;• Row count" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;" vertex="1" parent="1">
+          <mxGeometry x="480" y="440" width="180" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow8" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="decision3" target="metadata">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Generate Filename -->
+        <mxCell id="filename" value="Generate Filename&#xa;permissions_export_&#xa;YYYY-MM-DD_HH-MM-SS.csv" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="480" y="580" width="180" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow9" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="metadata" target="filename">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Trigger Download -->
+        <mxCell id="download" value="Trigger Browser Download&#xa;Send file to user" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="490" y="690" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow10" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="filename" target="download">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Success -->
+        <mxCell id="success" value="SUCCESS!&#xa;X Permissions Exported&#xa;File Downloaded" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="260" y="700" width="160" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-success" value="" style="endArrow=classic;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;rounded=1;" edge="1" parent="1" source="download" target="success">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Legend -->
+        <mxCell id="legend-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="180" height="200" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="180" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-1" value="Lambda Function" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="80" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-2" value="Decision Point" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="930" y="115" width="80" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-3" value="Error State" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="165" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-4" value="User Action" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="890" y="200" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- Notes -->
+        <mxCell id="notes-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="880" y="260" width="180" height="240" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="notes-title" value="Notes:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="890" y="270" width="160" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="notes-text" value="• Export all or filtered&#xa;  permissions&#xa;&#xa;• CSV format matches&#xa;  import format&#xa;&#xa;• Includes metadata&#xa;  as comments&#xa;&#xa;• UTF-8 encoding&#xa;&#xa;• Resolves IDs to&#xa;  human-readable names&#xa;&#xa;• Can be used for:&#xa;  - Backup&#xa;  - Audit&#xa;  - Bulk editing&#xa;  - Documentation&#xa;&#xa;• File downloads&#xa;  directly to browser&#xa;&#xa;• Filename includes&#xa;  timestamp" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="295" width="160" height="195" as="geometry" />
+        </mxCell>
+        
+        <!-- Export Options -->
+        <mxCell id="options-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="880" y="520" width="180" height="180" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="options-title" value="Export Options:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="890" y="530" width="160" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="options-text" value="Filters:&#xa;• All DataSets&#xa;• Specific DataSet&#xa;• Date range&#xa;• User/Group filter&#xa;&#xa;Include:&#xa;• All fields&#xa;• Exclude metadata&#xa;• Exclude timestamps&#xa;&#xa;Format:&#xa;• CSV (default)&#xa;• Excel (future)&#xa;• JSON (future)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="555" width="160" height="135" as="geometry" />
+        </mxCell>
+        
+        <!-- Use Cases -->
+        <mxCell id="usecase-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="40" y="780" width="380" height="120" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="usecase-title" value="Common Use Cases:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="50" y="790" width="160" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="usecase-text" value="1. BACKUP: Export all permissions before major changes&#xa;2. AUDIT: Review who has access to what data&#xa;3. BULK EDIT: Export → Edit in Excel → Re-import&#xa;4. MIGRATION: Move permissions to another environment&#xa;5. DOCUMENTATION: Share access matrix with stakeholders" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="50" y="815" width="360" height="75" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
