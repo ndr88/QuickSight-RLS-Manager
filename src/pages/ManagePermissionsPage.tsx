@@ -291,6 +291,9 @@ function AddPermissionPage() {
   const [publishModalVisible, setPublishModalVisible] = useState<boolean>(false);
   const [publishComplete, setPublishComplete] = useState<boolean>(false);
   const [publishHasErrors, setPublishHasErrors] = useState<boolean>(false);
+  
+  // API Limitations Alert
+  const [apiLimitationsAlertDismissed, setApiLimitationsAlertDismissed] = useState<boolean>(false);
 
   /**
    * Add Log to output text area
@@ -2288,8 +2291,13 @@ function AddPermissionPage() {
                     )}
                     
                     {/* Warning for non-API manageable datasets */}
-                    {selectedDataset && selectedDataset.apiManageable === false && (
-                      <Alert type="warning" header="API Limitations - Manual RLS Required">
+                    {selectedDataset && selectedDataset.apiManageable === false && !apiLimitationsAlertDismissed && (
+                      <Alert 
+                        type="warning" 
+                        dismissible 
+                        onDismiss={() => setApiLimitationsAlertDismissed(true)}
+                        header="API Limitations - Manual RLS Required"
+                      >
                         <SpaceBetween size="s">
                           <div>
                             This dataset was created via <strong>direct file upload</strong> (CSV/Excel) and cannot be updated via QuickSight APIs due to AWS limitations.
