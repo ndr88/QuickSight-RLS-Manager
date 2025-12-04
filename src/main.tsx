@@ -84,7 +84,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               identity={
                 {
                   href: "#",
-                  title: "Kiro: Row Level Security Manager",
+                  title: "Row Level Security Manager",
                   logo: {
                     src: "/src/assets/QS-RLS-Logo.png",
                     alt: "QS-RLS"
