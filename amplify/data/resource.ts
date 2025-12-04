@@ -26,6 +26,11 @@ import { removeRLSDataSet } from "../functions/removeRLSDataSet/resources"
 import { deleteDataSetFromQS } from "../functions/deleteDataSetFromQS/resources"
 import { deleteDataSetGlueTable } from "../functions/deleteDataSetGlueTable/resources"
 import { deleteDataSetS3Objects } from "../functions/deleteDataSetS3Objects/resources"
+import { updateRLSDataSetPermissions } from "../functions/updateRLSDataSetPermissions/resources"
+import { fetchRLSDataSetPermissions } from "../functions/fetchRLSDataSetPermissions/resources"
+import { listPublishHistory } from "../functions/listPublishHistory/resource"
+import { rollbackToVersion } from "../functions/rollbackToVersion/resource"
+import { getVersionContent } from "../functions/getVersionContent/resource"
 
 const UserGroupType = {
   User: 'User',
@@ -35,6 +40,11 @@ const UserGroupType = {
 const rlsStatus = {
   ENABLED: 'ENABLED',
   DISABLED: 'DISABLED'
+} as const;
+
+const PermissionLevel = {
+  OWNER: 'OWNER',
+  VIEWER: 'VIEWER'
 } as const;
 
 const FunctionResponseType = a.customType({
@@ -107,6 +117,8 @@ const schema = a.schema({
       rlsEnabled: a.enum(Object.values(rlsStatus)), 
       rlsToolManaged: a.boolean().required(), 
       rlsDataSetId: a.string(), // Related RLS dataset ID
+      isRls: a.boolean().required(),
+      newDataPrep: a.boolean().required(), // Indicates if dataset uses new data prep mode (has DataPrepConfiguration)
       apiManageable: a.boolean().required(), // Indicates if the dataset is managed by API
       toolCreated: a.boolean().required(), // Indicates if the dataset is managed by this Tool
       dataSetRegion: a.string().required(),
@@ -115,8 +127,13 @@ const schema = a.schema({
       createdTime: a.string(),
       importMode: a.string(),
       lastUpdatedTime: a.string(), 
-      fields: a.string().array(),
+      fieldTypes: a.string(), // JSON string: Object map of field name to type {"fieldName": "STRING", ...}
+      currentVersion: a.integer(), // Current version number (increments on each publish)
+      lastPublishedVersion: a.integer(), // Last successfully published version
+      lastPublishedAt: a.datetime(), // When last published to QuickSight
       permissions: a.hasMany('Permission', 'dataSetArn'),
+      rlsVisibility: a.hasMany('RLSDataSetVisibility', 'dataSetArn'),
+      publishHistory: a.hasMany('PublishHistory', 'dataSetArn'),
       createdAt: a.datetime(),
       updatedAt: a.datetime()
     })
@@ -137,6 +154,7 @@ const schema = a.schema({
       principalId: a.string(), // Principal ID
       description: a.string(),
       permission: a.hasMany('Permission', 'userGroupArn'),
+      rlsVisibility: a.hasMany('RLSDataSetVisibility', 'userGroupArn'),
       createdAt: a.datetime(),
       updatedAt: a.datetime()
     })
@@ -150,6 +168,39 @@ const schema = a.schema({
       userGroup: a.belongsTo('UserGroup', 'userGroupArn'), // Model name and foreign key field
       field: a.string().required(), // Field name
       rlsValues: a.string().required(), // Comma-separated list of RLS values
+      status: a.enum(['PENDING', 'PUBLISHED', 'FAILED', 'MANUAL']), // Status of the permission: PENDING (not yet published), PUBLISHED (applied to QuickSight), FAILED (publish failed), MANUAL (non-API manageable dataset)
+      lastPublishedAt: a.datetime(), // When it was last successfully published to QuickSight
+      createdAt: a.datetime(),
+      updatedAt: a.datetime()
+    })
+    .authorization((allow) => [allow.authenticated()]),
+
+  RLSDataSetVisibility: a
+    .model({
+      rlsDataSetArn: a.string().required(), // The RLS dataset ARN
+      dataSetArn: a.string().required(), // The main dataset ARN (for reference)
+      userGroupArn: a.string().required(), // User or group ARN
+      permissionLevel: a.enum(Object.values(PermissionLevel)), // OWNER or VIEWER
+      dataSet: a.belongsTo('DataSet', 'dataSetArn'),
+      userGroup: a.belongsTo('UserGroup', 'userGroupArn'),
+      createdAt: a.datetime(),
+      updatedAt: a.datetime()
+    })
+    .authorization((allow) => [allow.authenticated()]),
+
+  PublishHistory: a
+    .model({
+      dataSetArn: a.string().required(), // The dataset this publish belongs to
+      version: a.integer().required(), // Version number
+      publishedAt: a.datetime().required(), // When published
+      publishedBy: a.string(), // User who published (optional for now)
+      s3VersionId: a.string(), // S3 version ID of the CSV file
+      s3Key: a.string(), // S3 key of the CSV file
+      permissionCount: a.integer().required(), // Number of permissions in this version
+      status: a.enum(['SUCCESS', 'FAILED']), // Publish status
+      errorMessage: a.string(), // Error message if failed
+      csvSnapshot: a.string(), // Optional: store CSV content for quick access
+      dataSet: a.belongsTo('DataSet', 'dataSetArn'),
       createdAt: a.datetime(),
       updatedAt: a.datetime()
     })
@@ -246,7 +297,10 @@ const schema = a.schema({
       statusCode: a.integer().required(),
       message: a.string().required(),
       datasetsFields: a.string().required(), // This will be a string containing a JSON of dataSets
+      fieldTypes: a.string(), // JSON string: Object map of field name to type
       spiceCapacityInBytes: a.integer().required(),
+      newDataPrep: a.boolean(),
+      apiManageable: a.boolean(),
       errorName: a.string(),
     }))
     .authorization((allow) => [allow.authenticated()])
@@ -299,6 +353,8 @@ const schema = a.schema({
       statusCode: a.integer().required(),
       message: a.string().required(),
       csvColumns: a.string().array().required(),
+      s3VersionId: a.string(),
+      s3Key: a.string(),
       errorType: a.string(),
     }))
     .authorization((allow) => [allow.authenticated()])
@@ -490,6 +546,87 @@ const schema = a.schema({
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(deleteDataSetS3Objects)),
 
+  updateRLSDataSetPermissions: a
+    .query()
+    .arguments({
+      region: a.string().required(),
+      rlsDataSetId: a.string().required(),
+      permissions: a.string().required(), // JSON stringified array of {userGroupArn, permissionLevel}
+    })
+    .returns(a.customType({
+      statusCode: a.integer().required(),
+      message: a.string().required(),
+      errorType: a.string(),
+    }))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(updateRLSDataSetPermissions)),
+
+  fetchRLSDataSetPermissions: a
+    .query()
+    .arguments({
+      region: a.string().required(),
+      rlsDataSetId: a.string().required(),
+    })
+    .returns(a.customType({
+      statusCode: a.integer().required(),
+      message: a.string().required(),
+      permissions: a.string().required(), // JSON stringified array
+      errorType: a.string(),
+    }))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(fetchRLSDataSetPermissions)),
+
+  listPublishHistory: a
+    .query()
+    .arguments({
+      region: a.string().required(),
+      dataSetId: a.string().required(),
+      s3BucketName: a.string().required(),
+    })
+    .returns(a.customType({
+      statusCode: a.integer().required(),
+      message: a.string().required(),
+      versions: a.string().required(), // JSON stringified array of versions
+      errorType: a.string(),
+    }))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(listPublishHistory)),
+
+  rollbackToVersion: a
+    .query()
+    .arguments({
+      region: a.string().required(),
+      dataSetId: a.string().required(),
+      s3BucketName: a.string().required(),
+      versionId: a.string().required(),
+    })
+    .returns(a.customType({
+      statusCode: a.integer().required(),
+      message: a.string().required(),
+      newVersionId: a.string(),
+      csvContent: a.string(),
+      errorType: a.string(),
+    }))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(rollbackToVersion)),
+
+  getVersionContent: a
+    .query()
+    .arguments({
+      region: a.string().required(),
+      dataSetId: a.string().required(),
+      s3BucketName: a.string().required(),
+      versionId: a.string().required(),
+    })
+    .returns(a.customType({
+      statusCode: a.integer().required(),
+      message: a.string().required(),
+      csvContent: a.string(),
+      errorType: a.string(),
+    }))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(getVersionContent)),
+
 
 }).authorization(allow => [
   allow.resource(setAccount),
@@ -513,7 +650,12 @@ const schema = a.schema({
   allow.resource(removeRLSDataSet),
   allow.resource(deleteDataSetFromQS),
   allow.resource(deleteDataSetGlueTable),
-  allow.resource(deleteDataSetS3Objects)
+  allow.resource(deleteDataSetS3Objects),
+  allow.resource(updateRLSDataSetPermissions),
+  allow.resource(fetchRLSDataSetPermissions),
+  allow.resource(listPublishHistory),
+  allow.resource(rollbackToVersion),
+  allow.resource(getVersionContent)
 ]);
 
 export type Schema = ClientSchema<typeof schema>;

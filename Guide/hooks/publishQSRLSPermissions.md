@@ -1,3 +1,0 @@
-# Hook: publishQSRLSPermissions
-
-:warning: todo

@@ -1,82 +1,69 @@
 import type { Schema } from "../../data/resource";
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
 import { env } from '$amplify/env/fetchNamespacesFromQS';
-import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
+import { ListNamespacesCommand } from "@aws-sdk/client-quicksight";
 
-import { QuickSightClient, ListNamespacesCommand } from "@aws-sdk/client-quicksight";
+import { initializeAmplify } from '../_shared/utils/amplify-config';
+import { createLogger } from '../_shared/utils/logger';
+import { validateRequired } from '../_shared/utils/validation';
+import { getQuickSightClient } from '../_shared/clients/quicksight';
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
- 
-Amplify.configure(resourceConfig, libraryOptions);
+const FUNCTION_NAME = 'fetchNamespacesFromQS';
 
-// Initialize the Amplify Data client
-const client = generateClient<Schema>();
-
-/**
- * This function will perform a ListNamespaces call to Quicksight APIs to retrieve namespaces list and count
- */
 export const handler: Schema["fetchNamespacesFromQS"]["functionHandler"] = async ( event ) => {
-
-  console.log("Start to fetch Namespaces from QuickSight") 
-
-  try {  
-    // Check Environment Variables
-    const accountId = env.ACCOUNT_ID || null
-
-    // If Environment Variables have failed to load, or in the QuickSight Management Region is missing, then throw an Error
-    if( ! accountId ){
-      throw new Error("Missing environment variables")
-    }
+  const logger = createLogger(FUNCTION_NAME);
+  
+  try {
+    await initializeAmplify(env);
     
-    // Initialize the QuickSight client
-    const quicksightClient = new QuickSightClient({ region:  event.arguments.qsManagementRegion });
+    validateRequired(env.ACCOUNT_ID, 'ACCOUNT_ID');
+    validateRequired(event.arguments.qsManagementRegion, 'qsManagementRegion');
 
-    // Fetch all Namespaces with Pagination (if any)
-    if( ! event.arguments.nextToken ){
-      console.log("Fetching Namespaces, first call")
-    }else{
-      console.log("Fetching Namespaces, next call. NextToken: ", event.arguments.nextToken)
+    const accountId = env.ACCOUNT_ID;
+    const region = event.arguments.qsManagementRegion;
+    const nextToken = event.arguments.nextToken;
+
+    if (nextToken) {
+      logger.info('Fetching Namespaces (paginated)', { nextToken });
+    } else {
+      logger.info('Fetching Namespaces (first call)');
     }
 
-    // Create the ListNamespaces command
+    const quicksightClient = getQuickSightClient(region);
+
     const command = new ListNamespacesCommand({
       AwsAccountId: accountId,
       MaxResults: parseInt(env.API_MAX_RESULTS),
-      ...(event.arguments.nextToken && { NextToken: event.arguments.nextToken })
+      ...(nextToken && { NextToken: nextToken })
     });
 
-    // Execute the command
     const response = await quicksightClient.send(command);
-    console.log( "Processing response" )
+    logger.debug('Processing response', { status: response.Status });
 
-    if( response.Namespaces && response.Status === 200){
-      // namespacesList is an array of namespaces as JSON with arn, name and capacityRegion extracted from response variable
+    if (response.Namespaces && response.Status === 200) {
       const namespacesList = response.Namespaces.map((namespace: any) => ({
         arn: namespace.Arn,
         name: namespace.Name,
         capacityRegion: namespace.CapacityRegion
       }));
 
+      logger.info('Namespaces fetched successfully', { count: namespacesList.length });
+      
       return {
         statusCode: 200,
         message: 'QuickSight Namespaces fetched successfully',
         namespacesList: JSON.stringify(namespacesList),
         nextToken: response.NextToken
       };
-    } else{
-      console.log("Error processing response: ", response)
-      throw new Error("Error processing response.")
+    } else {
+      throw new Error('Error processing response');
     }
 
-  } catch (errors) {
-    const err = errors as Error
-    const errorMessage = JSON.stringify(err.message, null, 2)
-    console.error('Error listing QuickSight Namespaces: ', errorMessage);
+  } catch (error) {
+    logger.error('Failed to fetch Namespaces', error);
     return {
       statusCode: 500,
-      message: errorMessage,
-      errorName: err.name,
+      message: 'Failed to fetch QuickSight Namespaces',
+      errorName: error instanceof Error ? error.name : 'UnknownError',
       namespacesList: ""
     };
   }

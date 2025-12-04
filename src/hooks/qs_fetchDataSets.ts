@@ -79,14 +79,36 @@ export const qs_fetchDataSets = async ({
         const datasetsList = JSON.parse(resQsDatasetList.data.datasetsList)
 
         for( const dataset of datasetsList ){
-          addLog("")
+          addLog("---")
+          
           // Check if dataset has RLS enabled
-          const rlsEnabled = dataset.RowLevelPermissionDataSet?.Status === 'ENABLED'
-            ? RLSStatus.ENABLED 
-            : RLSStatus.DISABLED;
-
-          // Determine RLS dataset ID without useState
-          const rlsDataSetId = dataset.RowLevelPermissionDataSet?.Arn || '';
+          // Handle both old format (RowLevelPermissionDataSet) and new format (RowLevelPermissionDataSetMap)
+          let rlsEnabled = RLSStatus.DISABLED;
+          let rlsDataSetId = '';
+          
+          // New format: RowLevelPermissionDataSetMap (object with keys)
+          if (dataset.RowLevelPermissionDataSetMap) {
+            const rlsMap = dataset.RowLevelPermissionDataSetMap;
+            const rlsKeys = Object.keys(rlsMap);
+            
+            if (rlsKeys.length > 0) {
+              // Get the first RLS dataset from the map
+              const firstRlsKey = rlsKeys[0];
+              const rlsConfig = rlsMap[firstRlsKey];
+              
+              rlsEnabled = rlsConfig.Status === 'ENABLED' 
+                ? RLSStatus.ENABLED 
+                : RLSStatus.DISABLED;
+              rlsDataSetId = rlsConfig.Arn || '';
+            }
+          }
+          // Old format: RowLevelPermissionDataSet (single object) - for backward compatibility
+          else if (dataset.RowLevelPermissionDataSet) {
+            rlsEnabled = dataset.RowLevelPermissionDataSet.Status === 'ENABLED'
+              ? RLSStatus.ENABLED 
+              : RLSStatus.DISABLED;
+            rlsDataSetId = dataset.RowLevelPermissionDataSet.Arn || '';
+          }
 
           // Fetching DataSet Fields
           const resQsDataSetFields = await client.queries.fetchDataSetFieldsFromQS({
@@ -94,25 +116,29 @@ export const qs_fetchDataSets = async ({
             dataSetId: dataset.DataSetId
           })
 
-          let dataSetFields = []
-          let apiManageable = true
+          let fieldTypes = undefined
+          let apiManageable = false
           let spiceUsedCapacityDataSet = 0
+          let newDataPrep = false
 
-          if( resQsDataSetFields && resQsDataSetFields.data?.datasetsFields && resQsDatasetList.data.statusCode == 200 ){
-            const data = JSON.parse(resQsDataSetFields.data.datasetsFields)
-            dataSetFields = JSON.parse(resQsDataSetFields.data.datasetsFields)
-            apiManageable = true
-            spiceUsedCapacityDataSet = data.spiceCapacity
-            addLog("DataSet Fields successfully fetched for DataSet '" + dataset.Name + "' with DataSetId: " + dataset.DataSetId)
-          }else if( resQsDataSetFields && resQsDataSetFields.data?.statusCode == 999 ){
-            // TODO ADD CHECK THAT ERROR MESSAGE IS EXACTLY THE CORRECT ONE
-            apiManageable = false
-            dataSetFields = []
-            addLog("DataSet " + dataset.Name + " is not manageable through APIs", "WARNING")
+          if( resQsDataSetFields && resQsDataSetFields.data?.statusCode == 200 ){
+            // Successfully fetched dataset info
+            fieldTypes = resQsDataSetFields.data.fieldTypes
+            apiManageable = resQsDataSetFields.data.apiManageable ?? false
+            spiceUsedCapacityDataSet = resQsDataSetFields.data.spiceCapacityInBytes || 0
+            newDataPrep = resQsDataSetFields.data.newDataPrep || false
+            
+            if (apiManageable) {
+              addLog("DataSet Fields successfully fetched for DataSet '" + dataset.Name + "' with DataSetId: " + dataset.DataSetId)
+            } else {
+              addLog("DataSet '" + dataset.Name + "' is not API manageable (direct file upload). Fields saved but publish must be done manually.", "WARNING")
+            }
           } else {
-            const errorMessage = "Error fetching DataSets Fields from QuickSight API. Skipping Dataset. Retry later. " + JSON.stringify(resQsDatasetList.errors, null, 2)
-            addLog("Attempting to fetch fields for Dataset " + dataset.DataSetId + "failed. Trying to save the Dataset anyway without Fields. Try again later. ", "WARNING")
-            addLog("Error Message: " + errorMessage, "ERROR", 500, "GenericError")
+            // Failed to fetch dataset info
+            apiManageable = false
+            fieldTypes = undefined
+            newDataPrep = false
+            addLog("Attempting to fetch fields for Dataset " + dataset.Name + " [" + dataset.DataSetId + "] failed. Trying to save the Dataset anyway without Fields.", "WARNING")
           }
 
           let datasetParams = {
@@ -125,11 +151,13 @@ export const qs_fetchDataSets = async ({
             importMode: dataset.ImportMode, 
             lastUpdatedTime: dataset.LastUpdatedTime, 
             dataSetRegion: region,
-            fields: dataSetFields,
+            fieldTypes: fieldTypes,
             apiManageable: apiManageable,   
             toolCreated: false,
             spiceCapacityInBytes: spiceUsedCapacityDataSet,
-            rlsToolManaged: false
+            rlsToolManaged: false,
+            isRls: dataset.UseAs === 'RLS_RULES',
+            newDataPrep: newDataPrep
           }
           
           // If the dataset exists in the list to delete, remove it from the delete list and update it.

@@ -1,0 +1,198 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="CheckSPICEWorkflow" name="Check SPICE Capacity Workflow">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- User Action -->
+        <mxCell id="user-1" value="User views&#xa;Homepage/Dashboard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="180" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Auto Trigger -->
+        <mxCell id="trigger" value="Auto-trigger on page load&#xa;(or manual refresh)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="180" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="user-1" target="trigger">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Get Account Info -->
+        <mxCell id="get-account" value="Get Account Details&#xa;from DynamoDB&#xa;(QS region, account ID)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="180" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow2" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="trigger" target="get-account">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Account Configured? -->
+        <mxCell id="decision1" value="Account&#xa;Configured?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="70" y="350" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow3" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="get-account" target="decision1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Not Configured -->
+        <mxCell id="not-config" value="Show Message:&#xa;'Configure account&#xa;to view SPICE'" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="270" y="360" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-not" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision1" target="not-config">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Query QuickSight -->
+        <mxCell id="query-qs" value="getQSSpiceCapacity&#xa;Query QuickSight API&#xa;for SPICE usage" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="50" y="470" width="160" height="70" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow4" value="Yes" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="decision1" target="query-qs">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Decision: Query Success? -->
+        <mxCell id="decision2" value="Data&#xa;Retrieved?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="70" y="580" width="120" height="80" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow5" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="query-qs" target="decision2">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Error -->
+        <mxCell id="error" value="ERROR:&#xa;Failed to fetch&#xa;SPICE data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="270" y="590" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-error" value="No" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="decision2" target="error">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Continue to next column -->
+        <mxCell id="connector1" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0;entryY=0.5;rounded=1;" edge="1" parent="1" source="decision2" target="parse">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Parse Data -->
+        <mxCell id="parse" value="Parse SPICE Data&#xa;• Total capacity (GB)&#xa;• Used capacity (GB)&#xa;• Available (GB)&#xa;• Usage percentage" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;" vertex="1" parent="1">
+          <mxGeometry x="480" y="40" width="160" height="110" as="geometry" />
+        </mxCell>
+        
+        <!-- Calculate Metrics -->
+        <mxCell id="calculate" value="Calculate Metrics&#xa;• % Used&#xa;• % Available&#xa;• Estimated cost&#xa;• Trend (if historical)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;" vertex="1" parent="1">
+          <mxGeometry x="480" y="190" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow6" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="parse" target="calculate">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Determine Status -->
+        <mxCell id="status" value="Determine Status&#xa;• Green: &lt; 70% used&#xa;• Yellow: 70-90% used&#xa;• Red: &gt; 90% used" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;" vertex="1" parent="1">
+          <mxGeometry x="480" y="330" width="160" height="90" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow7" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="calculate" target="status">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Display Widget -->
+        <mxCell id="display" value="Display SPICE Widget&#xa;• Capacity bar chart&#xa;• Usage percentage&#xa;• Status indicator&#xa;• Refresh button" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;" vertex="1" parent="1">
+          <mxGeometry x="480" y="460" width="160" height="100" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow8" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="status" target="display">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Show Warnings -->
+        <mxCell id="warnings" value="Show Warnings (if needed)&#xa;• Low capacity alert&#xa;• Recommend cleanup&#xa;• Suggest upgrade" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;" vertex="1" parent="1">
+          <mxGeometry x="480" y="600" width="160" height="90" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow9" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="display" target="warnings">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Success -->
+        <mxCell id="success" value="SUCCESS!&#xa;SPICE Info Displayed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="270" y="655" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="arrow-success" value="" style="endArrow=classic;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;rounded=1;" edge="1" parent="1" source="warnings" target="success">
+          <mxGeometry width="50" height="50" relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Legend -->
+        <mxCell id="legend-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="180" height="180" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="880" y="40" width="180" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-1" value="Lambda Function" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="80" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-2" value="Decision Point" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="930" y="115" width="80" height="40" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-3" value="Error State" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="165" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-4" value="UI Display" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="200" width="160" height="25" as="geometry" />
+        </mxCell>
+        
+        <!-- Notes -->
+        <mxCell id="notes-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="880" y="240" width="180" height="240" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="notes-title" value="Notes:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="890" y="250" width="160" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="notes-text" value="• Auto-loads on&#xa;  homepage&#xa;&#xa;• Read-only view&#xa;&#xa;• Shows real-time&#xa;  SPICE usage&#xa;&#xa;• Color-coded status:&#xa;  - Green: Healthy&#xa;  - Yellow: Warning&#xa;  - Red: Critical&#xa;&#xa;• Helps users:&#xa;  - Plan RLS publishes&#xa;  - Avoid capacity issues&#xa;  - Understand costs&#xa;&#xa;• Can be refreshed&#xa;  manually&#xa;&#xa;• Cached for 5 min" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="275" width="160" height="195" as="geometry" />
+        </mxCell>
+        
+        <!-- SPICE Info -->
+        <mxCell id="info-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="880" y="500" width="180" height="190" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="info-title" value="SPICE Capacity:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="890" y="510" width="160" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="info-text" value="QuickSight SPICE:&#xa;&#xa;• In-memory engine&#xa;• Fast query performance&#xa;• Limited capacity&#xa;• Costs per GB/month&#xa;&#xa;Capacity varies by:&#xa;• Edition (Standard/&#xa;  Enterprise)&#xa;• Region&#xa;• Purchased capacity&#xa;&#xa;RLS DataSets consume&#xa;SPICE capacity" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="890" y="535" width="160" height="145" as="geometry" />
+        </mxCell>
+        
+        <!-- Display Example -->
+        <mxCell id="example-box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="680" y="40" width="160" height="160" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="example-title" value="Display Example:" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="690" y="50" width="140" height="20" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="example-text" value="SPICE Capacity&#xa;&#xa;[████████░░] 78%&#xa;&#xa;Used: 39.2 GB&#xa;Total: 50 GB&#xa;Available: 10.8 GB&#xa;&#xa;Status: ⚠️ Warning&#xa;&#xa;[Refresh]" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="690" y="75" width="140" height="115" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

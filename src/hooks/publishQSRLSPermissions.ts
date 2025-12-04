@@ -36,6 +36,56 @@ const enum RLSStatus {
 
 const client = generateClient<Schema>();
 
+/**
+ * Auto-apply RLS Dataset visibility permissions if configured
+ */
+const applyRLSVisibilityPermissions = async (
+  dataSetArn: string,
+  rlsDataSetArn: string,
+  region: string,
+  addLog: (log: string, type?: string, errorCode?: number, errorName?: string) => void
+): Promise<void> => {
+  try {
+    // Fetch visibility settings from database
+    const visibilityRecords = await client.models.RLSDataSetVisibility.list({
+      filter: { dataSetArn: { eq: dataSetArn } }
+    });
+    
+    if (visibilityRecords.data.length === 0) {
+      addLog("No visibility permissions configured for this RLS dataset.");
+      return;
+    }
+    
+    addLog(`Applying ${visibilityRecords.data.length} visibility permission(s) to RLS dataset...`);
+    
+    // Build permissions array
+    const permissions = visibilityRecords.data.map(record => ({
+      userGroupArn: record.userGroupArn,
+      permissionLevel: record.permissionLevel
+    }));
+    
+    // Extract RLS dataset ID from ARN
+    const rlsDataSetId = rlsDataSetArn.split('/').pop() || rlsDataSetArn;
+    
+    // Apply permissions to QuickSight
+    const updateResponse = await client.queries.updateRLSDataSetPermissions({
+      region: region,
+      rlsDataSetId: rlsDataSetId,
+      permissions: JSON.stringify(permissions)
+    });
+    
+    if (updateResponse.data?.statusCode === 200) {
+      addLog("RLS dataset visibility permissions applied successfully.");
+    } else {
+      addLog("Failed to apply visibility permissions: " + updateResponse.data?.message, "WARNING");
+    }
+    
+  } catch (error) {
+    addLog("Error applying visibility permissions: " + error, "WARNING");
+    console.error('Error applying RLS visibility permissions:', error);
+  }
+};
+
 const qsDataSetIngestionCheck = async({
   region,
   dataSetArn,
@@ -187,6 +237,8 @@ export const publishQSRLSPermissions = async ({
   setStep("step1", StepStatus.LOADING)
   // let csvColumns be an array of strings
   let csvColumns: string[] = [];
+  let s3VersionId: string | undefined;
+  let s3Key: string | undefined;
 
   addLog("Uploading new CSV file to S3.")
   try{
@@ -211,6 +263,11 @@ export const publishQSRLSPermissions = async ({
           errorType: "NoValidColumnsFound"
         }
       } 
+
+      // Capture S3 version info for history tracking
+      s3VersionId = publishRLSStep01_S3.data.s3VersionId || undefined;
+      s3Key = publishRLSStep01_S3.data.s3Key || undefined;
+      addLog(`CSV uploaded with version ID: ${s3VersionId}`);
 
       addLog(publishRLSStep01_S3.data?.message)
       setStep("step1", StepStatus.SUCCESS)
@@ -348,6 +405,10 @@ export const publishQSRLSPermissions = async ({
       }
       addLog(publishRLSStep03_QuickSight.data?.message)
       setStep("step3", StepStatus.SUCCESS)
+      
+      // Auto-apply visibility permissions if configured
+      await applyRLSVisibilityPermissions(dataSetArn, rlsDataSetArn, region, addLog);
+      
     }else if(publishRLSStep03_QuickSight && publishRLSStep03_QuickSight.data?.statusCode == 201 && publishRLSStep03_QuickSight.data?.message){
       // HTTP 201 --> RLS DataSet Creation RUNNING
       if(publishRLSStep03_QuickSight.data?.rlsDataSetArn && publishRLSStep03_QuickSight.data?.ingestionId){
@@ -375,6 +436,11 @@ export const publishQSRLSPermissions = async ({
       if(ingestionRespone && ingestionRespone.status == 200 && ingestionRespone.message){
         addLog(ingestionRespone.message)
         addLog("RLS DataSet created/updated successfully.")
+        setStep("step3", StepStatus.SUCCESS)
+        
+        // Auto-apply visibility permissions if configured
+        await applyRLSVisibilityPermissions(dataSetArn, rlsDataSetArn, region, addLog);
+        
       }else{
         setStep("step3", StepStatus.ERROR)
         return{
@@ -450,7 +516,7 @@ export const publishQSRLSPermissions = async ({
     }
 
     if( ! create ){
-      addLog('RLS DataSet ' + rlsDataSetId + ' already exists. Updating it.')
+      addLog('RLS DataSet ' + rlsDataSetId + ' already exists. Updating it.', "INFO")
 
       const updateRLSDataSetResponse = await client.models.DataSet.update({
         dataSetArn: rlsDataSetId,
@@ -471,7 +537,7 @@ export const publishQSRLSPermissions = async ({
       const rlsDataSetIdExtracted = rlsDataSetIdSplit[rlsDataSetIdSplit.length - 1]
 
       let datasetParams = {
-        name: `Amplify-Managed-RLS for DataSetId: ${dataSetId}`,
+        name: `Managed-RLS for DataSetId: ${dataSetId}`,
         dataSetArn: rlsDataSetArn,
         dataSetId: rlsDataSetIdExtracted, 
         rlsEnabled: RLSStatus.DISABLED , 
@@ -480,7 +546,9 @@ export const publishQSRLSPermissions = async ({
         apiManageable: true,   
         toolCreated: true,
         rlsToolManaged: false,
-        glueS3Id: dataSetId
+        glueS3Id: dataSetId,
+        isRls: true,
+        newDataPrep: true
       }
 
       console.debug(datasetParams)
@@ -599,6 +667,11 @@ export const publishQSRLSPermissions = async ({
     addLog("Updating RLS Tool Database")
     setStep("step5", StepStatus.LOADING)
 
+    // Get current dataset to check version
+    const currentDataSet = await client.models.DataSet.get({ dataSetArn: dataSetArn });
+    const currentVersion = currentDataSet.data?.currentVersion || 0;
+    const newVersion = currentVersion + 1;
+
     // Update the Selected DataSet 
     addLog('Updating DataSet ' + dataSetId + " in RLS Tool with new RLS Info.")
 
@@ -606,7 +679,10 @@ export const publishQSRLSPermissions = async ({
       dataSetArn: dataSetArn,
       rlsToolManaged: true,
       rlsDataSetId: rlsDataSetArn,
-      rlsEnabled: "ENABLED"
+      rlsEnabled: "ENABLED",
+      currentVersion: newVersion,
+      lastPublishedVersion: newVersion,
+      lastPublishedAt: new Date().toISOString()
     })
 
     if(updateDataSetResponse.errors){
@@ -616,6 +692,30 @@ export const publishQSRLSPermissions = async ({
     }
 
     addLog("DataSet updated correctly.")
+
+    // Create PublishHistory record
+    if (s3VersionId && s3Key) {
+      addLog(`Creating version ${newVersion} history record...`);
+      
+      // Count permissions from CSV (lines - 1 for header)
+      const permissionCount = csvOutput.split("\n").filter(line => line.trim()).length - 1;
+      
+      const historyResponse = await client.models.PublishHistory.create({
+        dataSetArn: dataSetArn,
+        version: newVersion,
+        publishedAt: new Date().toISOString(),
+        s3VersionId: s3VersionId,
+        s3Key: s3Key,
+        permissionCount: permissionCount,
+        status: 'SUCCESS'
+      });
+
+      if (historyResponse.errors) {
+        addLog('Warning: Failed to create history record: ' + historyResponse.errors[0].message, "WARNING");
+      } else {
+        addLog(`Version ${newVersion} history recorded successfully.`);
+      }
+    }
   
     setStep("step5", StepStatus.SUCCESS)
     
@@ -628,6 +728,29 @@ export const publishQSRLSPermissions = async ({
     setStep("step5", StepStatus.ERROR)
     const error = e as Error
     addLog(error.name + ": " + error.message, "ERROR", 500, error.name)
+    
+    // Try to create a FAILED history record
+    if (s3VersionId && s3Key) {
+      try {
+        const currentDataSet = await client.models.DataSet.get({ dataSetArn: dataSetArn });
+        const currentVersion = currentDataSet.data?.currentVersion || 0;
+        const permissionCount = csvOutput.split("\n").filter(line => line.trim()).length - 1;
+        
+        await client.models.PublishHistory.create({
+          dataSetArn: dataSetArn,
+          version: currentVersion + 1,
+          publishedAt: new Date().toISOString(),
+          s3VersionId: s3VersionId,
+          s3Key: s3Key,
+          permissionCount: permissionCount,
+          status: 'FAILED',
+          errorMessage: error.message
+        });
+      } catch (historyError) {
+        console.error('Failed to create FAILED history record:', historyError);
+      }
+    }
+    
     return {
       status: 500,
       message: error.name + ": " + error.message

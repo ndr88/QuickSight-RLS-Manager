@@ -1,99 +1,76 @@
 import type { Schema } from "../../data/resource";
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
 import { env } from '$amplify/env/setAccount';
-import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
+import { generateClient } from 'aws-amplify/data';
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
- 
-Amplify.configure(resourceConfig, libraryOptions);
+import { initializeAmplify } from '../_shared/utils/amplify-config';
+import { createLogger } from '../_shared/utils/logger';
+import { validateRequired } from '../_shared/utils/validation';
+import { successResponse } from '../_shared/utils/response';
+import { handleError } from '../_shared/errors/error-handler';
 
-// Initialize the Amplify Data client
-const client = generateClient<Schema>();
+const FUNCTION_NAME = 'setAccount';
 
 /**
  * INIT function will be launched only at the first access
  */
 export const handler: Schema["setAccount"]["functionHandler"] = async ( event ) => {
-
-  console.log("Trying to add backend resources info to AccountDetails schema")
-
+  const logger = createLogger(FUNCTION_NAME);
+  
   try {
-    // Fetching info from Environment Variables
-    const accountId = env.ACCOUNT_ID || null
-    // QuickSight Management Region is set in the Front-End
-    const qsManagementRegion = event.arguments.qsManagementRegion
-     // QuickSight Resources Counter - To be updated after init and resources check.
-    const namespacesCount = event.arguments.namespacesCount || 0
-    const groupsCount = event.arguments.groupsCount || 0
-    const usersCount = event.arguments.usersCount || 0 
+    await initializeAmplify(env);
+    const client = generateClient<Schema>();
+    logger.info('Adding backend resources info to AccountDetails schema');
 
-    // If Environment Variables have failed to load, or in the QuickSight Management Region is missing, then throw an Error
-    if( ! accountId ){
-      throw new Error("Missing environment variables")
-    }
-    if ( ! qsManagementRegion ){
-      throw new Error("Missing qsManagementRegion variable")
-    }
+    // Validate required variables
+    validateRequired(env.ACCOUNT_ID, 'ACCOUNT_ID');
+    validateRequired(event.arguments.qsManagementRegion, 'qsManagementRegion');
+
+    const accountId = env.ACCOUNT_ID;
+    const qsManagementRegion = event.arguments.qsManagementRegion;
+    const namespacesCount = event.arguments.namespacesCount || 0;
+    const groupsCount = event.arguments.groupsCount || 0;
+    const usersCount = event.arguments.usersCount || 0;
 
     const accountParams = {
-      accountId: accountId,
-      qsManagementRegion: qsManagementRegion,
-      namespacesCount: namespacesCount,
-      groupsCount: groupsCount,
-      usersCount: usersCount,
-    }
+      accountId,
+      qsManagementRegion,
+      namespacesCount,
+      groupsCount,
+      usersCount,
+    };
 
-    // If the data already exists, then throw an Error
-    const {data: response_CheckAccountDetails, errors} = await client.models.AccountDetails.get({ accountId: accountId })
+    // Check if account details already exist
+    const { data: existingAccount, errors: getErrors } = await client.models.AccountDetails.get({ 
+      accountId 
+    });
 
-    if( errors ){
-      const errorMessage = errors.map(e => e.message).join(', ');
+    if (getErrors) {
+      const errorMessage = getErrors.map(e => e.message).join(', ');
       throw new Error(errorMessage);
     }
 
-    if( response_CheckAccountDetails ){
-      // Updating the Account Details
-      console.log("Account Details already exist. Updating the data.")
-      const response_AccountDetails = await client.models.AccountDetails.update( accountParams )
+    if (existingAccount) {
+      logger.info('Account Details already exist, updating');
+      const response = await client.models.AccountDetails.update(accountParams);
 
-      // If client.models.AccountDetails.create failed, raise the Error.
-      if (response_AccountDetails.errors) {
-        const errorMessage = response_AccountDetails.errors.map(e => e.message).join(', ');
+      if (response.errors) {
+        const errorMessage = response.errors.map(e => e.message).join(', ');
         throw new Error(errorMessage);
       }
-    } else{
-      // First Init, create Account Details
-      console.log("Account Details do not exist. Creating the data.")
-      const response_AccountDetails = await client.models.AccountDetails.create( accountParams )
+    } else {
+      logger.info('Creating new Account Details');
+      const response = await client.models.AccountDetails.create(accountParams);
 
-      // If client.models.AccountDetails.create failed, raise the Error.
-      if (response_AccountDetails.errors) {
-        const errorMessage = response_AccountDetails.errors.map(e => e.message).join(', ');
+      if (response.errors) {
+        const errorMessage = response.errors.map(e => e.message).join(', ');
         throw new Error(errorMessage);
       }
     }
 
-    // If the data have been created, give a success message.
-    console.log("Succesfully initiated the QS RLS Managed Tool")
-    return {
-      statusCode: 200,
-      message: 'Succesfully initiated the QS RLS Managed Tool',
-    };
+    logger.info('Successfully initialized the QS RLS Managed Tool');
+    return successResponse('Successfully initiated the QS RLS Managed Tool');
 
-  }catch(err){
-    const error = err as Error;
-
-    console.error('Failed to Init the QS RLS Managed Tool:', {
-      message: error.message,
-      stack: error.stack
-    });
-
-    return {
-      statusCode: 500,
-      message: 'Failed to Init the Account',
-      errorMessage: error.message,
-      errorName: error.name,
-    };
+  } catch (error) {
+    return handleError(error, FUNCTION_NAME, 'Failed to initialize the Account');
   }
 }

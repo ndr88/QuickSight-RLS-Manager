@@ -1,3 +1,0 @@
-# Hook: regionSetup
-
-:warning: TODO

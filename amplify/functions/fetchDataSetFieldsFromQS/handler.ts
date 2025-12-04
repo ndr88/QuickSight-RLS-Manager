@@ -1,86 +1,139 @@
 import type { Schema } from "../../data/resource";
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
 import { env } from '$amplify/env/fetchDataSetFieldsFromQS';
-import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
+import { DescribeDataSetCommand } from "@aws-sdk/client-quicksight";
 
-import { QuickSightClient, DescribeDataSetCommand } from "@aws-sdk/client-quicksight";
+import { initializeAmplify } from '../_shared/utils/amplify-config';
+import { createLogger } from '../_shared/utils/logger';
+import { validateRequired } from '../_shared/utils/validation';
+import { getQuickSightClient } from '../_shared/clients/quicksight';
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
- 
-Amplify.configure(resourceConfig, libraryOptions);
+const FUNCTION_NAME = 'fetchDataSetFieldsFromQS';
 
-// Initialize the Amplify Data client
-const client = generateClient<Schema>();
-
-/**
- * This function will perform a ListDataSets call to Quicksight APIs to retrieve datasets list and count
- * @param event 
- * qsManagementRegion: QuickSight Management Region
- * @returns 
- */
 export const handler: Schema["fetchDataSetFieldsFromQS"]["functionHandler"] = async ( event ) => {
-
-  console.log("Start to fetch Dataset Fields from QuickSight") 
-
-  try {  
-    // Check Environment Variables
-    const accountId = env.ACCOUNT_ID || null
-    const DATASETID = event.arguments.dataSetId
-    const REGION = event.arguments.region
-
-    // If Environment Variables have failed to load, or in the QuickSight Management Region is missing, then throw an Error
-    if( ! accountId  ){
-      throw new Error("Missing environment variables")
-    }
+  const logger = createLogger(FUNCTION_NAME);
+  
+  try {
+    await initializeAmplify(env);
     
-    console.log("Fetching Fields for DataSet: " + DATASETID)
+    validateRequired(env.ACCOUNT_ID, 'ACCOUNT_ID');
+    validateRequired(event.arguments.dataSetId, 'dataSetId');
+    validateRequired(event.arguments.region, 'region');
 
-    // Initialize the QuickSight client
-    const quicksightClient = new QuickSightClient({ region:  REGION });
+    const accountId = env.ACCOUNT_ID;
+    const dataSetId = event.arguments.dataSetId;
+    const region = event.arguments.region;
 
-    // Create the ListDatasets command
+    logger.info('Fetching Dataset Fields', { dataSetId, region });
+
+    const quicksightClient = getQuickSightClient(region);
+
     const command = new DescribeDataSetCommand({
       AwsAccountId: accountId,
-      DataSetId: DATASETID
+      DataSetId: dataSetId
     });
-    // Execute the command
+
     const response = await quicksightClient.send(command);
-    console.log( "Processing response" )
+    logger.debug('Processing response', { status: response.Status });
 
-    if( response.DataSet && response.Status === 200 && response.DataSet?.OutputColumns){
-
-      let outputFields = response.DataSet.OutputColumns.map((column: any) => column.Name);
-
+    if (response.DataSet && response.Status === 200 && response.DataSet?.OutputColumns) {
+      const outputFields = response.DataSet.OutputColumns.map((column: any) => column.Name);
+      const hasNewDataPrep = response.DataSet.DataPrepConfiguration !== undefined;
+      
+      // Build field types object map: { fieldName: fieldType }
+      const fieldTypesMap: Record<string, string> = {};
+      response.DataSet.OutputColumns.forEach((column: any) => {
+        if (column.Name) {
+          fieldTypesMap[column.Name] = column.Type || 'STRING';
+        }
+      });
+      
+      // Check if this is a direct file upload (not API manageable)
+      // Direct uploads do NOT have a DataSourceArn in PhysicalTableMap
+      // DataSource-based datasets have RelationalTable with DataSourceArn
+      let isApiManageable = false; // Default to false
+      const dataSet = response.DataSet;
+      
+      if (dataSet && dataSet.PhysicalTableMap) {
+        const physicalTableKeys = Object.keys(dataSet.PhysicalTableMap);
+        
+        logger.debug('Checking PhysicalTableMap for DataSourceArn', {
+          dataSetId,
+          physicalTableKeys,
+          physicalTableMapStructure: JSON.stringify(dataSet.PhysicalTableMap)
+        });
+        
+        // Check if any physical table has a DataSourceArn
+        for (const key of physicalTableKeys) {
+          const table = dataSet.PhysicalTableMap[key];
+          
+          logger.debug('Checking physical table', {
+            key,
+            hasTable: !!table,
+            hasRelationalTable: !!(table && table.RelationalTable),
+            hasDataSourceArn: !!(table && table.RelationalTable && table.RelationalTable.DataSourceArn)
+          });
+          
+          if (table && table.RelationalTable && table.RelationalTable.DataSourceArn) {
+            isApiManageable = true;
+            logger.info('DataSourceArn found - dataset is API manageable', {
+              dataSetId,
+              dataSourceArn: table.RelationalTable.DataSourceArn
+            });
+            break;
+          }
+        }
+        
+        if (!isApiManageable) {
+          // No DataSourceArn found = direct file upload
+          logger.warn('Dataset has no DataSourceArn - direct file upload detected', {
+            dataSetId,
+            limitation: 'API updates not supported for direct file uploads'
+          });
+        }
+      } else {
+        logger.warn('No PhysicalTableMap found', { dataSetId });
+      }
+      
+      logger.info('Dataset Fields fetched successfully', { 
+        fieldsCount: outputFields.length,
+        newDataPrep: hasNewDataPrep,
+        fieldTypes: Object.keys(fieldTypesMap).length,
+        apiManageable: isApiManageable
+      });
+      
       return {
         statusCode: 200,
         message: 'QuickSight Dataset Fields fetched successfully',
         datasetsFields: JSON.stringify(outputFields),
-        spiceCapacityInBytes: response.DataSet.ConsumedSpiceCapacityInBytes || 0
+        fieldTypes: JSON.stringify(fieldTypesMap),
+        spiceCapacityInBytes: response.DataSet.ConsumedSpiceCapacityInBytes || 0,
+        newDataPrep: hasNewDataPrep,
+        apiManageable: isApiManageable
       };
-    } else{
-      console.log("Error processing response: ", response)
-      throw new Error("Error processing response.")
+    } else {
+      throw new Error('Error processing response');
     }
 
-  } catch (error) {
-    const err = error as Error
-    console.error('Error fetching QuickSight Dataset Fields:', error);
-    if(err.message === "The data set type is not supported through API yet"){
+  } catch (error: any) {
+    logger.error('Failed to fetch Dataset Fields', error);
+    
+    if (error?.message === "The data set type is not supported through API yet") {
       return {
         statusCode: 999,
-        message: err.message,
+        message: error.message,
         datasetsFields: "",
+        fieldTypes: undefined,
         spiceCapacityInBytes: 0
       };
-   
     }
+    
     return {
       statusCode: 500,
-      message: 'Error fetching QuickSight Dataset Fields: ' + err.message,
+      message: 'Error fetching QuickSight Dataset Fields',
       datasetsFields: "",
+      fieldTypes: undefined,
       spiceCapacityInBytes: 0,
-      errorName: "GenericError"
+      errorName: error instanceof Error ? error.name : 'GenericError'
     };
   }
 };

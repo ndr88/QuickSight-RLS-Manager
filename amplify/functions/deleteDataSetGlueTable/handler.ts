@@ -1,124 +1,66 @@
-import type { Schema } from "../../data/resource"
-import { Amplify } from 'aws-amplify';
-import { generateClient } from 'aws-amplify/data';
-import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime';
-import { GlueClient, DeleteTableCommand } from "@aws-sdk/client-glue"; // ES Modules import
-
+import type { Schema} from "../../data/resource"
 import { env } from '$amplify/env/deleteDataSetGlueTable';
+import { DeleteTableCommand } from "@aws-sdk/client-glue";
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
- 
-Amplify.configure(resourceConfig, libraryOptions);
+import { initializeAmplify } from '../_shared/utils/amplify-config';
+import { createLogger } from '../_shared/utils/logger';
+import { validateRequired } from '../_shared/utils/validation';
+import { getGlueClient } from '../_shared/clients/glue';
 
-// Initialize the Amplify Data client
-const client = generateClient<Schema>();
+const FUNCTION_NAME = 'deleteDataSetGlueTable';
 
-/**
- * Publich data to QuickSight with new DataSet Creation
- */
 export const handler: Schema["deleteDataSetGlueTable"]["functionHandler"] = async ( event ) => {
-
-  const accountId = env.ACCOUNT_ID
-
-  const region = event.arguments.region
-  const glueDatabaseName = event.arguments.glueDatabaseName
-
-  const glueKey = event.arguments.glueKey
-
-  /**
-   * Validating Arguments and Variables
-   */
+  const logger = createLogger(FUNCTION_NAME);
+  
   try {
-    if( ! accountId ){ throw new ReferenceError("Missing 'accountId' variable.") }
-    if( ! region ){ throw new ReferenceError("Missing 'region'.") }
-    if( ! glueKey ){ throw new ReferenceError("Missing glueKey") }
-    if( ! glueDatabaseName ){ throw new ReferenceError("Missing tool Resource: glueDatabaseName") }
-
-  }catch(e){
-    console.error(e)
-    if( e instanceof ReferenceError ){
-      console.error("[ReferenceError]: Error validating the input variables. " + e.message )
-      return {
-        statusCode: 400,
-        message: "Error validating the input variables. " + e.message,
-        errorType: "ReferenceError"
-      }
+    await initializeAmplify(env);
     
-    }else{
-      console.error(e)
-      return {
-        statusCode: 500,
-        message: "Unknown Error. Please check the logs.",
-        errorType: "UnknownError"
-      }
-    }
-  }
- 
-  const glueTableName = `qs-rls-${glueKey}`
+    validateRequired(env.ACCOUNT_ID, 'ACCOUNT_ID');
+    validateRequired(event.arguments.region, 'region');
+    validateRequired(event.arguments.glueKey, 'glueKey');
+    validateRequired(event.arguments.glueDatabaseName, 'glueDatabaseName');
 
-  const glueClient = new GlueClient({ region: region });
+    const region = event.arguments.region;
+    const glueDatabaseName = event.arguments.glueDatabaseName;
+    const glueKey = event.arguments.glueKey;
+    const glueTableName = `qs-rls-${glueKey}`;
 
-  try{
-    const glueDeleteTableCommand = new DeleteTableCommand({
+    logger.info('Deleting Glue Table', { glueTableName, glueDatabaseName });
+
+    const glueClient = getGlueClient(region);
+    
+    const deleteTableCommand = new DeleteTableCommand({
       DatabaseName: glueDatabaseName,
       Name: glueTableName
-    })
+    });
 
+    const deleteTableResponse = await glueClient.send(deleteTableCommand);
+
+    if (deleteTableResponse.$metadata.httpStatusCode !== 200) {
+      throw new Error(`Error deleting Glue Table '${glueTableName}'`);
+    }
+
+    logger.info('Glue Table deleted successfully', { glueTableName });
+
+    return {
+      statusCode: 200,
+      message: `Glue Table '${glueTableName}' deleted successfully.`,
+    };
+
+  } catch (error: any) {
+    if (error?.name === 'EntityNotFoundException') {
+      logger.info('Glue Table not found, treating as success');
+      return {
+        statusCode: 200,
+        message: 'Glue Table already deleted or not found.',
+      };
+    }
     
-
-    const deleteTableResponse = await glueClient.send(glueDeleteTableCommand)
-
-    if(deleteTableResponse.$metadata.httpStatusCode != 200){
-      console.error(deleteTableResponse)
-      throw new Error(`Error deleting Glue Table '${glueTableName}' in Glue Database '${glueDatabaseName}'`)
-    }else{
-      console.info(`Glue Table '${glueTableName}' deleted from Glue Database '${glueDatabaseName}'.`)
-    }
-
-  }catch(e){
-
-    if(e instanceof Error) {
-      console.error(e.message)
-      const errorMessage = `[${e.name}] Failed deleting Glue Table ${glueTableName}: ${e.message}`
-      let statusCode = 500
-      let errorType = e.name
-
-      switch (e.name) {
-        case "EntityNotFoundException":
-          console.warn(`[${e.name}] Glue Table '${glueTableName}' not found in Glue Database '${glueDatabaseName}'.`)
-          break
-        case "FederationSourceException":
-        case "InvalidInputException":
-        case "OperationTimeoutException":
-        case "ResourceNotReadyException":
-        case "FederationSourceRetryableException":
-          statusCode = 400
-          break
-        case "GlueEncryptionException": 
-        case "InternalServiceException":
-          statusCode = 500
-          break
-        default:
-          statusCode = 500
-          errorType = "UnknownError"
-      }
-      return {
-        statusCode: statusCode,
-        errorType: errorType,
-        message: errorMessage,
-      }
-    } else {
-      return {
-        statusCode: 500,
-        errorType: "UnknownError",
-        message: "An unknown error occurred.",
-      }
-    }
-
-  }
-
-  return {
-    statusCode: 200,
-    message: `Glue Table '${glueTableName}' deleted successfully.`,
+    logger.error('Failed to delete Glue Table', error);
+    return {
+      statusCode: 500,
+      message: 'Failed to delete Glue Table',
+      errorType: error instanceof Error ? error.name : 'UnknownError'
+    };
   }
 }
