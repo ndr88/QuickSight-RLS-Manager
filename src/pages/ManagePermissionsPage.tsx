@@ -65,6 +65,8 @@ interface RegionSetType {
 interface SelectedDataset {
   value: string;
   label: string;
+  apiManageable?: boolean;
+  description?: string;
   dataSetArn: string;
   dataSetId: string;
   dataSetName: string;
@@ -121,7 +123,7 @@ function AddPermissionPage() {
   const [selectedRegionDetails, setselectedRegionDetails] = useState<RegionSetType | null>() 
 
   const [datasetsList, setDatasetsList] = useState<any[]>([]);  // All the DataSets available for the selectedRegion
-  const [datasetOptions, setDatasetOptions] = useState<{value: string, label: string, tags: string[]}[]>([]); // DataSet List in option format for the Select DataSet
+  const [datasetOptions, setDatasetOptions] = useState<any[]>([]); // DataSet List in option format for the Select DataSet
   const [selectedDataset, setSelectedDataset] = useState<SelectedDataset | null>(null); // The DataSet 
   // selected at a specific moment
   const [formDataSetSelectDisabled, setFormDataSetSelectDisabled] = useState<boolean>(true);
@@ -347,9 +349,6 @@ function AddPermissionPage() {
     try {
       const response = await client.models.DataSet.list({
         filter: {
-            apiManageable: {
-              eq: true
-            },
             toolCreated: {
               eq: false
             },
@@ -363,7 +362,11 @@ function AddPermissionPage() {
       let datasetOptionsMap = response.data.map((dataset: any) => ({
         value: dataset.dataSetId,
         label: dataset.name,
-        tags: [dataset.dataSetId, "RLS: "+dataset.rlsEnabled]
+        tags: [dataset.dataSetId, "RLS: "+dataset.rlsEnabled],
+        labelTag: dataset.apiManageable === false ? "⚠" : "",
+        description: dataset.apiManageable === false 
+          ? "Direct file upload - Manual RLS required" 
+          : "API manageable"
       }))
 
       datasetOptionsMap.sort((a: any, b: any) => {
@@ -638,14 +641,19 @@ function AddPermissionPage() {
     }
   }
 
-  // Delete All Permissions for a User/Group
-  const deleteAllPermissionsForUserGroup = async (userGroupArn: string) => {
+  // Delete All Permissions for a User/Group (for the current dataset only)
+  const deleteAllPermissionsForUserGroup = async (userGroupArn: string, dataSetArn: string) => {
 
     const listToDelete = await client.models.Permission.list(
       {filter:
-        {userGroupArn:{
-          eq: userGroupArn
-        }}
+        {
+          userGroupArn: {
+            eq: userGroupArn
+          },
+          dataSetArn: {
+            eq: dataSetArn
+          }
+        }
       }
     )
 
@@ -707,12 +715,15 @@ function AddPermissionPage() {
       set_step1_s3(StepStatus.LOADING);
       addLog('[STEP 2/2] Creating permission in database...');
       
+      // Determine status based on dataset API manageability
+      const permissionStatus = selectedDataset?.apiManageable === false ? 'MANUAL' : 'PENDING';
+      
       const response = await client.models.Permission.create({
         dataSetArn: dataSetArn,
         userGroupArn: userGroupArn,
         field: field,
         rlsValues: rlsValues,
-        status: 'PENDING',
+        status: permissionStatus,
       })
       
       if( response?.errors ){
@@ -912,6 +923,10 @@ function AddPermissionPage() {
         return
       }
 
+      // Save current dataset info before refresh
+      const currentDatasetId = selectedDataset.dataSetId;
+      const currentDatasetValue = selectedDataset.value;
+      
       await fetchDatasets(selectedRegion.value);
 
       // Mark all permissions for this dataset as PUBLISHED
@@ -926,11 +941,37 @@ function AddPermissionPage() {
       }
       addLog(`✓ Updated ${permissionsToUpdate.length} permission(s) status`);
 
-      setStatusIndicator({status:"success", message:"Ok"})
+      // Refresh permissions list to show updated statuses
+      await fetchPermissions();
+      addLog('✓ Permissions list refreshed');
+
+      // Restore selected dataset with updated data
+      const updatedDatasetDetails = datasetsList.find(ds => ds.dataSetId === currentDatasetId);
+      const updatedDatasetOption = datasetOptions.find(opt => opt.value === currentDatasetValue);
       
-      // Refresh DataSet List
-      //addLog("Refreshing DataSet List")
-      // fetchDatasets(selectedRegion.value) fetch does not work here, need to subscribe or just update and keep the selected dataset
+      if (updatedDatasetDetails && updatedDatasetOption) {
+        const restoredDataset: SelectedDataset = {
+          value: updatedDatasetOption.value || '',
+          label: updatedDatasetOption.label || '',
+          description: updatedDatasetOption.description,
+          dataSetArn: updatedDatasetDetails.dataSetArn,
+          dataSetId: updatedDatasetDetails.dataSetId,
+          dataSetName: updatedDatasetDetails.name,
+          region: updatedDatasetDetails.dataSetRegion,
+          fieldTypes: updatedDatasetDetails.fieldTypes,
+          rlsToolManaged: updatedDatasetDetails.rlsToolManaged,
+          rlsDataSetId: updatedDatasetDetails.rlsDataSetId || "",
+          rlsEnabled: updatedDatasetDetails.rlsEnabled,
+          rlsS3Key: updatedDatasetDetails.glueS3Id,
+          rlsS3BucketName: selectedRegion?.value ? regionsList?.find(r => r.regionName === selectedRegion.value)?.s3BucketName : undefined,
+          lastUpdatedTime: updatedDatasetDetails.updatedAt,
+          apiManageable: updatedDatasetDetails.apiManageable
+        };
+        setSelectedDataset(restoredDataset);
+        addLog('✓ Dataset selection restored with updated data');
+      }
+
+      setStatusIndicator({status:"success", message:"Ok"})
 
     } catch (err) {
       console.error('Error publishing permissions:', err);
@@ -1251,13 +1292,16 @@ function AddPermissionPage() {
       set_step1_s3(StepStatus.LOADING);
       addLog(`[STEP 2/3] Importing ${validPermissions.length} permission(s) to database...`);
       
+      // Determine status based on dataset API manageability
+      const permissionStatus = selectedDataset?.apiManageable === false ? 'MANUAL' : 'PENDING';
+      
       for (const perm of validPermissions) {
         await client.models.Permission.create({
           dataSetArn: selectedDataset.dataSetArn,
           userGroupArn: perm.userGroupArn,
           field: perm.field,
           rlsValues: perm.rlsValues,
-          status: 'PENDING'
+          status: permissionStatus
         });
       }
       
@@ -1513,10 +1557,15 @@ function AddPermissionPage() {
           });
         break
       case ((rls && !tool) || (!rls && !tool)) && hasPermissions: // true, false, true OR false, false, true
-        setPermissionStatusIndicator ({
-              status: "warning",
-              message: "Permissions are defined but RLS is not enabled or not managed by the tool. Click 'Publish RLS in QuickSight' to apply them, or refresh the region data from Global Settings."
-          });
+        // Don't show warning for non-API manageable datasets (they have their own warning)
+        if (selectedDataset?.apiManageable !== false) {
+          setPermissionStatusIndicator ({
+                status: "warning",
+                message: "Permissions are defined but RLS is not enabled or not managed by the tool. Click 'Publish RLS in QuickSight' to apply them, or refresh the region data from Global Settings."
+            });
+        } else {
+          setPermissionStatusIndicator({status: "success", message: "Ok"})
+        }
         break  
       case ((! rls && ! tool && ! hasPermissions) || (rls && ! tool && ! hasPermissions)):
         setPermissionStatusIndicator({status: "success", message: "Ok"})
@@ -1628,7 +1677,11 @@ function AddPermissionPage() {
       refreshCSVOutput(selectedDataset.dataSetArn);
     }
 
-    if(permissionsList.length > 0){
+    // Disable publish button if no permissions OR if dataset is not API manageable
+    const hasPermissions = permissionsList.length > 0;
+    const isApiManageable = selectedDataset?.apiManageable !== false;
+    
+    if(hasPermissions && isApiManageable){
       setPublishQSRLSDisabled(false)
     }else{
       setPublishQSRLSDisabled(true)
@@ -1684,6 +1737,7 @@ function AddPermissionPage() {
           <ul>
             <li><Badge color="green">Published</Badge> - Permission is saved in database AND applied to QuickSight</li>
             <li><Badge color="blue">Pending</Badge> - Permission is saved in database but NOT yet published to QuickSight. Click "Publish RLS in QuickSight" to apply it.</li>
+            <li><Badge color="severity-medium">Manual</Badge> - Permission is saved for a non-API manageable dataset. Download the CSV and manually apply RLS in QuickSight.</li>
             <li><Badge color="red">Failed</Badge> - Last publish attempt failed. Check logs and try publishing again.</li>
           </ul>
         </TextContent>
@@ -1900,7 +1954,7 @@ function AddPermissionPage() {
                 <Select 
                   controlId="quicksightDataSet"
                   disabled={formDataSetSelectDisabled}
-                  selectedOption={selectedDataset}
+                  selectedOption={selectedDataset as any}
                   options={datasetOptions}
                   onChange={({ detail }) => {
 
@@ -1913,6 +1967,7 @@ function AddPermissionPage() {
                     const newSelectedDataset: SelectedDataset = {
                       value: detail.selectedOption.value || '',
                       label: detail.selectedOption.label || '',
+                      description: detail.selectedOption.description,
                       dataSetArn: selectedDatasetDetails.dataSetArn,
                       dataSetId: selectedDatasetDetails.dataSetId,
                       dataSetName: selectedDatasetDetails.name,
@@ -1923,7 +1978,8 @@ function AddPermissionPage() {
                       rlsEnabled: selectedDatasetDetails.rlsEnabled,
                       rlsS3Key: selectedDatasetDetails.glueS3Id,
                       rlsS3BucketName: selectedRegion?.value ? regionsList?.find(r => r.regionName === selectedRegion.value)?.s3BucketName : undefined,
-                      lastUpdatedTime: selectedDatasetDetails.updatedAt
+                      lastUpdatedTime: selectedDatasetDetails.updatedAt,
+                      apiManageable: selectedDatasetDetails.apiManageable
                     };
                     
                     setSelectedDataset(newSelectedDataset);
@@ -1932,6 +1988,7 @@ function AddPermissionPage() {
                   empty="No DataSets found."
                   virtualScroll
                   filteringType="auto"
+                  triggerVariant="option"
                 />
               </FormField>
             
@@ -1954,9 +2011,10 @@ function AddPermissionPage() {
                       <KeyValuePairs 
                         columns={3}
                         items={[
+                          // Name
                           {
                             label: "Name",
-                            value:   (
+                            value: (
                               <CopyToClipboard
                                 copyButtonAriaLabel="Copy Name"
                                 copyErrorText="Name failed to copy"
@@ -1966,9 +2024,10 @@ function AddPermissionPage() {
                               />
                             )
                           },
+                          // ID
                           {
                             label: "ID",
-                            value:  (
+                            value: (
                               <CopyToClipboard
                                 copyButtonAriaLabel="Copy ID"
                                 copyErrorText="ID failed to copy"
@@ -1978,9 +2037,10 @@ function AddPermissionPage() {
                               />
                             )
                           },
+                          // ARN
                           {
                             label: "ARN",
-                            value:  (
+                            value: (
                               <CopyToClipboard
                                 copyButtonAriaLabel="Copy ARN"
                                 copyErrorText="ARN failed to copy"
@@ -1990,10 +2050,23 @@ function AddPermissionPage() {
                               />
                             )
                           },
+                          // Import Mode (with SPICE capacity if applicable)
                           {
-                            label: "Import Mode",
-                            value: datasetDetails.importMode,
+                            label: datasetDetails.importMode === "SPICE" && datasetDetails.spiceCapacityInBytes 
+                              ? "Import Mode (Consumed SPICE Capacity)" 
+                              : "Import Mode",
+                            value: (
+                              <SpaceBetween direction="horizontal" size="xs">
+                                <Badge color={datasetDetails.importMode === "SPICE" ? "severity-medium" : "blue"}>
+                                  {datasetDetails.importMode}
+                                </Badge>
+                                {datasetDetails.importMode === "SPICE" && datasetDetails.spiceCapacityInBytes && (
+                                  <span>{formatBytes(datasetDetails.spiceCapacityInBytes)}</span>
+                                )}
+                              </SpaceBetween>
+                            ),
                           },
+                          // Usage
                           {
                             label: "Usage",
                             value: (
@@ -2002,6 +2075,7 @@ function AddPermissionPage() {
                               </Badge>
                             ),
                           },
+                          // Data Prep Mode
                           {
                             label: "Data Prep Mode",
                             value: (
@@ -2010,6 +2084,7 @@ function AddPermissionPage() {
                               </Badge>
                             ),
                           },
+                          // Manageable
                           {
                             label: "Manageable",
                             value: (() => {
@@ -2034,30 +2109,52 @@ function AddPermissionPage() {
                               );
                             })(),
                           },
-                          ...(datasetDetails.spiceCapacityInBytes ? [{
-                            label: "Consumed SPICE Capacity",
-                            value: formatBytes(datasetDetails.spiceCapacityInBytes)
-                          }] : []),
+                          // Created Time
                           {
                             label: "Created Time",
                             value: datasetDetails.createdTime,
                           },
+                          // Last Updated
                           {
                             label: "Last Updated",
                             value: datasetDetails.lastUpdatedTime,
                           },
+                          // RLS Enabled (only for non-RLS datasets)
                           ...(!datasetDetails.isRls ? [{
                             label: "RLS Enabled",
-                            value: (<Badge color={datasetDetails.rlsEnabled === "ENABLED" ? (datasetDetails.rlsToolManaged === true 
-                              ? "green" 
-                              : "severity-medium") : "severity-neutral"}>
-                              {datasetDetails.rlsEnabled}
-                            </Badge>),
+                            value: (
+                              <Badge color={datasetDetails.rlsEnabled === "ENABLED" ? (datasetDetails.rlsToolManaged === true 
+                                ? "green" 
+                                : "severity-medium") : "severity-neutral"}>
+                                {datasetDetails.rlsEnabled}
+                              </Badge>
+                            ),
                           }] : []),
+                          // RLS Dataset Name (only if RLS is enabled)
+                          ...(datasetDetails.rlsEnabled === "ENABLED" && !datasetDetails.isRls && datasetDetails.rlsDataSetId ? [
+                            {
+                              label: "RLS Dataset Name",
+                              value: (() => {
+                                // RLS dataset name format: "Managed-RLS for DataSetId: <dataSetId>"
+                                const rlsName = `Managed-RLS for DataSetId: ${datasetDetails.dataSetId}`;
+                                
+                                return (
+                                  <CopyToClipboard
+                                    copyButtonAriaLabel="Copy RLS Dataset Name"
+                                    copyErrorText="Name failed to copy"
+                                    copySuccessText="Name copied"
+                                    textToCopy={rlsName}
+                                    variant="inline"
+                                  />
+                                );
+                              })(),
+                            },
+                          ] : []),
+                          // RLS Dataset ARN (only if RLS is enabled)
                           ...(datasetDetails.rlsEnabled === "ENABLED" && !datasetDetails.isRls ? [
                             {
                               label: "RLS Dataset ARN",
-                              value:  (
+                              value: (
                                 <CopyToClipboard
                                   copyButtonAriaLabel="Copy ARN"
                                   copyErrorText="ARN failed to copy"
@@ -2187,6 +2284,28 @@ function AddPermissionPage() {
                     {permissionStatusIndicator.status === 'warning' && (
                       <Alert type="warning" header="Action Required">
                         {permissionStatusIndicator.message}
+                      </Alert>
+                    )}
+                    
+                    {/* Warning for non-API manageable datasets */}
+                    {selectedDataset && selectedDataset.apiManageable === false && (
+                      <Alert type="warning" header="API Limitations - Manual RLS Required">
+                        <SpaceBetween size="s">
+                          <div>
+                            This dataset was created via <strong>direct file upload</strong> (CSV/Excel) and cannot be updated via QuickSight APIs due to AWS limitations.
+                          </div>
+                          <div>
+                            <strong>What you can do:</strong>
+                            <ul>
+                              <li>✅ Define and manage permissions using this tool</li>
+                              <li>✅ Download the RLS CSV file</li>
+                              <li>❌ Automatic publish to QuickSight (disabled)</li>
+                            </ul>
+                          </div>
+                          <div>
+                            <strong>To apply RLS:</strong> You must manually upload the CSV file to QuickSight through the UI.
+                          </div>
+                        </SpaceBetween>
                       </Alert>
                     )}
                     
@@ -2368,6 +2487,8 @@ function AddPermissionPage() {
                         return <Badge color="green">Published</Badge>;
                       } else if (item.status === 'FAILED') {
                         return <Badge color="red">Failed</Badge>;
+                      } else if (item.status === 'MANUAL') {
+                        return <Badge color="severity-medium">Manual</Badge>;
                       } else {
                         // PENDING or no status (legacy)
                         return <Badge color="blue">Pending</Badge>;
@@ -2427,64 +2548,7 @@ function AddPermissionPage() {
 
           </Container>
           )}
-          {
-            seeCSVOutput && !getSelectedDatasetDetails()?.isRls && (
-              <ExpandableSection
-                variant="container"
-                headerText={<>Export CSV {codeViewLoading && <Spinner />}</>}
-                headerActions={
-                  <Button
-                    onClick={
-                      () => {
-                        // download a csv file called "MyFile" with csvOutput as content
-                        const element = document.createElement("a");
-                        const file = new Blob([csvOutput], { type: 'text/plain' });
-                        element.href = URL.createObjectURL(file);
-                        element.download = "RLS-for-dataset-" + selectedDataset?.label + ".csv";
-                        document.body.appendChild(element);
-                        element.click();
-                        document.body.removeChild(element);
-                      }
-                    }
-                  >
-                    <Icon name="download"/>
-                    <> Export CSV</>
-                  </Button>
-
-                }>
-                
-                  <CodeView
-                    lineNumbers
-                    content={csvOutput}
-                    
-                  />
-              </ExpandableSection>
-            )
-          }
-          {!getSelectedDatasetDetails()?.isRls && (
-          <ExpandableSection 
-              headerText={
-                <>
-                  {"Status and Logs: "}<StatusIndicator type={statusIndicator.status as StatusIndicatorProps.Type}>{statusIndicator.message}</StatusIndicator>
-                </>
-              } 
-              variant="container">  
-            <SpaceBetween size="l">
-              <Steps 
-                steps={getStepsForAction().map(step => ({
-                  ...step,
-                  statusIconAriaLabel: step.status
-                }))}
-              />
-              <CodeView 
-                content={ logs }
-                lineNumbers
-                wrapLines
-              />
-            </SpaceBetween>
-          </ExpandableSection>
-          )}
-          {!getSelectedDatasetDetails()?.isRls && selectedDataset && (
+          {!getSelectedDatasetDetails()?.isRls && selectedDataset && selectedDataset.apiManageable !== false && (
           <ExpandableSection 
               headerText="Version History"
               variant="container">  
@@ -2564,6 +2628,63 @@ function AddPermissionPage() {
             </SpaceBetween>
           </ExpandableSection>
           )}
+          {
+            seeCSVOutput && !getSelectedDatasetDetails()?.isRls && selectedDataset && (
+              <ExpandableSection
+                variant="container"
+                headerText={<>Export CSV {codeViewLoading && <Spinner />}</>}
+                headerActions={
+                  <Button
+                    onClick={
+                      () => {
+                        // download a csv file called "MyFile" with csvOutput as content
+                        const element = document.createElement("a");
+                        const file = new Blob([csvOutput], { type: 'text/plain' });
+                        element.href = URL.createObjectURL(file);
+                        element.download = "RLS-for-dataset-" + selectedDataset?.label + ".csv";
+                        document.body.appendChild(element);
+                        element.click();
+                        document.body.removeChild(element);
+                      }
+                    }
+                  >
+                    <Icon name="download"/>
+                    <> Export CSV</>
+                  </Button>
+
+                }>
+                
+                  <CodeView
+                    lineNumbers
+                    content={csvOutput}
+                    
+                  />
+              </ExpandableSection>
+            )
+          }
+          {!getSelectedDatasetDetails()?.isRls && (
+          <ExpandableSection 
+              headerText={
+                <>
+                  {"Status and Logs: "}<StatusIndicator type={statusIndicator.status as StatusIndicatorProps.Type}>{statusIndicator.message}</StatusIndicator>
+                </>
+              } 
+              variant="container">  
+            <SpaceBetween size="l">
+              <Steps 
+                steps={getStepsForAction().map(step => ({
+                  ...step,
+                  statusIconAriaLabel: step.status
+                }))}
+              />
+              <CodeView 
+                content={ logs }
+                lineNumbers
+                wrapLines
+              />
+            </SpaceBetween>
+          </ExpandableSection>
+          )}
         </SpaceBetween>
         <Modal
 
@@ -2617,8 +2738,8 @@ function AddPermissionPage() {
                           field_values = "*"
                           field_selected = "*"
                           try{
-                            await deleteAllPermissionsForUserGroup(selectedUserGroupArn.value)
-                            addLog("Deleted all previous permissions related to entity: " + selectedUserGroupArn.value)
+                            await deleteAllPermissionsForUserGroup(selectedUserGroupArn.value, selectedDataset.dataSetArn)
+                            addLog("Deleted all previous permissions for entity: " + selectedUserGroupArn.value + " in dataset: " + selectedDataset.label)
                           }catch(err){
                             addLog("Error trying to delete previously created permissions.", "ERROR", 500, "PermissionDeletionError")
                             setModalErrorText({

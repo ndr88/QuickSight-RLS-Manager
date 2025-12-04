@@ -117,29 +117,28 @@ export const qs_fetchDataSets = async ({
           })
 
           let fieldTypes = undefined
-          let apiManageable = true
+          let apiManageable = false
           let spiceUsedCapacityDataSet = 0
           let newDataPrep = false
 
-          if( resQsDataSetFields && resQsDataSetFields.data?.fieldTypes && resQsDatasetList.data.statusCode == 200 ){
+          if( resQsDataSetFields && resQsDataSetFields.data?.statusCode == 200 ){
+            // Successfully fetched dataset info
             fieldTypes = resQsDataSetFields.data.fieldTypes
-            apiManageable = true
+            apiManageable = resQsDataSetFields.data.apiManageable ?? false
             spiceUsedCapacityDataSet = resQsDataSetFields.data.spiceCapacityInBytes || 0
             newDataPrep = resQsDataSetFields.data.newDataPrep || false
-            addLog("DataSet Fields successfully fetched for DataSet '" + dataset.Name + "' with DataSetId: " + dataset.DataSetId)
-          }else if( resQsDataSetFields && resQsDataSetFields.data?.statusCode == 999 ){
-            // TODO ADD CHECK THAT ERROR MESSAGE IS EXACTLY THE CORRECT ONE
-            apiManageable = false
-            fieldTypes = undefined
-            newDataPrep = false
-            addLog("DataSet " + dataset.Name + " is not manageable through APIs", "WARNING")
+            
+            if (apiManageable) {
+              addLog("DataSet Fields successfully fetched for DataSet '" + dataset.Name + "' with DataSetId: " + dataset.DataSetId)
+            } else {
+              addLog("DataSet '" + dataset.Name + "' is not API manageable (direct file upload). Fields saved but publish must be done manually.", "WARNING")
+            }
           } else {
+            // Failed to fetch dataset info
             apiManageable = false
             fieldTypes = undefined
             newDataPrep = false
-            //const errorMessage = "Error fetching DataSets Fields from QuickSight API. Some DataSets cannot be fully managed through APIs (e.g. CSVs directly uploaded to QS...)"
-            addLog("Attempting to fetch fields for Dataset " + dataset.Name + " [" + dataset.DataSetId + "] failed. Trying to save the Dataset anyway without Fields. Some DataSets cannot be fully managed through APIs (e.g. CSVs directly uploaded to QS...)", "WARNING")
-            //addLog("Error Message: " + errorMessage, "ERROR", 500, "GenericError")
+            addLog("Attempting to fetch fields for Dataset " + dataset.Name + " [" + dataset.DataSetId + "] failed. Trying to save the Dataset anyway without Fields.", "WARNING")
           }
 
           let datasetParams = {

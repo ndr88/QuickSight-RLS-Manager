@@ -47,10 +47,58 @@ export const handler: Schema["fetchDataSetFieldsFromQS"]["functionHandler"] = as
         }
       });
       
+      // Check if this is a direct file upload (not API manageable)
+      // Direct uploads do NOT have a DataSourceArn in PhysicalTableMap
+      // DataSource-based datasets have RelationalTable with DataSourceArn
+      let isApiManageable = false; // Default to false
+      const dataSet = response.DataSet;
+      
+      if (dataSet && dataSet.PhysicalTableMap) {
+        const physicalTableKeys = Object.keys(dataSet.PhysicalTableMap);
+        
+        logger.debug('Checking PhysicalTableMap for DataSourceArn', {
+          dataSetId,
+          physicalTableKeys,
+          physicalTableMapStructure: JSON.stringify(dataSet.PhysicalTableMap)
+        });
+        
+        // Check if any physical table has a DataSourceArn
+        for (const key of physicalTableKeys) {
+          const table = dataSet.PhysicalTableMap[key];
+          
+          logger.debug('Checking physical table', {
+            key,
+            hasTable: !!table,
+            hasRelationalTable: !!(table && table.RelationalTable),
+            hasDataSourceArn: !!(table && table.RelationalTable && table.RelationalTable.DataSourceArn)
+          });
+          
+          if (table && table.RelationalTable && table.RelationalTable.DataSourceArn) {
+            isApiManageable = true;
+            logger.info('DataSourceArn found - dataset is API manageable', {
+              dataSetId,
+              dataSourceArn: table.RelationalTable.DataSourceArn
+            });
+            break;
+          }
+        }
+        
+        if (!isApiManageable) {
+          // No DataSourceArn found = direct file upload
+          logger.warn('Dataset has no DataSourceArn - direct file upload detected', {
+            dataSetId,
+            limitation: 'API updates not supported for direct file uploads'
+          });
+        }
+      } else {
+        logger.warn('No PhysicalTableMap found', { dataSetId });
+      }
+      
       logger.info('Dataset Fields fetched successfully', { 
         fieldsCount: outputFields.length,
         newDataPrep: hasNewDataPrep,
-        fieldTypes: Object.keys(fieldTypesMap).length
+        fieldTypes: Object.keys(fieldTypesMap).length,
+        apiManageable: isApiManageable
       });
       
       return {
@@ -59,7 +107,8 @@ export const handler: Schema["fetchDataSetFieldsFromQS"]["functionHandler"] = as
         datasetsFields: JSON.stringify(outputFields),
         fieldTypes: JSON.stringify(fieldTypesMap),
         spiceCapacityInBytes: response.DataSet.ConsumedSpiceCapacityInBytes || 0,
-        newDataPrep: hasNewDataPrep
+        newDataPrep: hasNewDataPrep,
+        apiManageable: isApiManageable
       };
     } else {
       throw new Error('Error processing response');

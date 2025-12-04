@@ -265,8 +265,8 @@ export const publishQSRLSPermissions = async ({
       } 
 
       // Capture S3 version info for history tracking
-      s3VersionId = publishRLSStep01_S3.data.s3VersionId;
-      s3Key = publishRLSStep01_S3.data.s3Key;
+      s3VersionId = publishRLSStep01_S3.data.s3VersionId || undefined;
+      s3Key = publishRLSStep01_S3.data.s3Key || undefined;
       addLog(`CSV uploaded with version ID: ${s3VersionId}`);
 
       addLog(publishRLSStep01_S3.data?.message)
