@@ -416,6 +416,9 @@ function DatasetListPage() {
             <li>
             <Badge color="severity-neutral">DISABLED</Badge> The RLS is disabled for this dataset.
             </li>
+            <li>
+            <Badge color="severity-low">Rules Dataset</Badge> This dataset is a Rules Dataset.
+            </li>
           </ul>
         </TextContent>
         <Header variant="h3">API Manageable:</Header>
@@ -428,7 +431,7 @@ function DatasetListPage() {
               <Badge color="red">No</Badge> This DataSet cannot be managed by this tool, since the APIs are not supported for the related ingestion mode (e.g. Direct File Upload).
             </li>
             <li>
-              <Badge color="blue">No (is RLS)</Badge> This is an RLS DataSet and is not directly manageable.
+              <Badge color="severity-low">No</Badge> This is an RLS DataSet and is not directly manageable.
             </li>
             <li>
               <Badge color="severity-neutral">N/A</Badge> This DataSet was created by the tool.
@@ -610,7 +613,7 @@ function DatasetListPage() {
         <SpaceBetween size="l">
           <Container
           >
-            {// SORTING-PAGING ETC: https://cloudscape.design/get-started/dev-guides/collection-hooks/
+            {
             }
             <Table
               totalItemsCount={filteredDatasetNumber}
@@ -837,7 +840,7 @@ function DatasetListPage() {
                   sortingField: "rlsEnabled",
                   cell: (item: any) => (
                     <>
-                      {item.toolCreated ? <StatusIndicator type="stopped">RLS DataSet</StatusIndicator> : 
+                      {item.toolCreated ? <Badge color="severity-low">Rules DataSet</Badge> : 
                         <>
                           <Badge color={item.rlsEnabled === "ENABLED" 
                             ? (item.rlsToolManaged === true 
@@ -879,8 +882,8 @@ function DatasetListPage() {
                   cell: (item: any) => {
                     if (item.isRls) {
                       return (
-                        <Badge color="blue">
-                          No (is RLS)
+                        <Badge color="severity-low">
+                          No
                         </Badge>
                       );
                     }
