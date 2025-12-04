@@ -1,17 +1,19 @@
 # deleteDataSetS3Objects
 
-Lambda function that deletes all S3 objects and folders associated with a specific RLS DataSet.
+**Data Deletion Function** - Deletes all S3 objects and folders associated with a specific RLS DataSet.
 
 ## Overview
 
-This function removes all objects stored in the S3 bucket under the RLS-Datasets path for a given DataSet. It lists all objects with the specified prefix and deletes them, including the containing folder structure.
+This function removes all objects stored in the S3 bucket under the RLS-Datasets path for a given DataSet. It lists all objects with the specified prefix and deletes them, including the containing folder structure. This is part of the RLS DataSet cleanup process.
 
 ## Function Details
 
 - **Name**: `deleteDataSetS3Objects`
 - **Runtime**: Node.js (AWS Lambda)
 - **Timeout**: 120 seconds
-- **Handler**: `handler.ts`
+- **Handler**: [`handler.ts`](./handler.ts)
+- **Resources**: [`resources.ts`](./resources.ts)
+- **Schema Definition**: [`amplify/data/resource.ts`](../../data/resource.ts)
 
 ## Input Parameters
 
@@ -21,13 +23,13 @@ This function removes all objects stored in the S3 bucket under the RLS-Datasets
 | `s3BucketName` | string | Yes | Name of the S3 bucket containing RLS datasets |
 | `s3Key` | string | Yes | Key/prefix for the DataSet folder to delete (e.g., DataSet ID) |
 
-## Environment Variables
+### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ACCOUNT_ID` | AWS Account ID | Set by Amplify backend |
 
-## Response
+## Output
 
 ### Success Response (200)
 

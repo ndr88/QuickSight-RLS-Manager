@@ -1,17 +1,19 @@
 # checkQSManagementRegionAccess
 
-Lambda function that validates access to QuickSight Management Region by attempting to list users.
+**Utility Function** - Validates access to QuickSight Management Region by attempting to list users.
 
 ## Overview
 
-This function verifies that the application has proper access to the specified QuickSight Management Region by making a test API call to list users. This is typically used during initial setup to validate IAM permissions and region configuration.
+This function verifies that the application has proper access to the specified QuickSight Management Region by making a test API call to list users. This is typically used during initial setup to validate IAM permissions and region configuration before proceeding with RLS operations.
 
 ## Function Details
 
 - **Name**: `checkQSManagementRegionAccess`
 - **Runtime**: Node.js (AWS Lambda)
 - **Timeout**: 120 seconds
-- **Handler**: `handler.ts`
+- **Handler**: [`handler.ts`](./handler.ts)
+- **Resources**: [`resources.ts`](./resources.ts)
+- **Schema Definition**: [`amplify/data/resource.ts`](../../data/resource.ts)
 
 ## Input Parameters
 

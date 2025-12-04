@@ -1,17 +1,19 @@
 # fetchGroupsFromQS
 
-Lambda function that retrieves a list of QuickSight groups from the Management Region.
+**Data Fetching Function** - Retrieves a list of QuickSight groups from the Management Region.
 
 ## Overview
 
-This function calls the QuickSight `ListGroups` API to fetch all groups in a specified namespace. It supports pagination to handle large numbers of groups and returns the results as a JSON string.
+This function calls the QuickSight `ListGroups` API to fetch all groups in a specified namespace. It supports pagination to handle large numbers of groups and returns the results as a JSON string. This is used for RLS configuration and user management.
 
 ## Function Details
 
 - **Name**: `fetchGroupsFromQS`
 - **Runtime**: Node.js (AWS Lambda)
 - **Timeout**: 120 seconds
-- **Handler**: `handler.ts`
+- **Handler**: [`handler.ts`](./handler.ts)
+- **Resources**: [`resources.ts`](./resources.ts)
+- **Schema Definition**: [`amplify/data/resource.ts`](../../data/resource.ts)
 
 ## Input Parameters
 

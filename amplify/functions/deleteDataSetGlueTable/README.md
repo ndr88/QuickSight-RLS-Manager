@@ -1,17 +1,19 @@
 # deleteDataSetGlueTable
 
-Lambda function that deletes an AWS Glue table associated with an RLS DataSet.
+**Data Deletion Function** - Deletes an AWS Glue table associated with an RLS DataSet.
 
 ## Overview
 
-This function deletes a Glue table that was created to support QuickSight RLS DataSets. The table metadata is removed from the Glue Data Catalog, but the underlying S3 data files are not affected.
+This function deletes a Glue table that was created to support QuickSight RLS DataSets. The table metadata is removed from the Glue Data Catalog, but the underlying S3 data files are not affected. This is part of the RLS DataSet cleanup process.
 
 ## Function Details
 
 - **Name**: `deleteDataSetGlueTable`
 - **Runtime**: Node.js (AWS Lambda)
 - **Timeout**: 120 seconds
-- **Handler**: `handler.ts`
+- **Handler**: [`handler.ts`](./handler.ts)
+- **Resources**: [`resources.ts`](./resources.ts)
+- **Schema Definition**: [`amplify/data/resource.ts`](../../data/resource.ts)
 
 ## Input Parameters
 
@@ -21,13 +23,13 @@ This function deletes a Glue table that was created to support QuickSight RLS Da
 | `glueDatabaseName` | string | Yes | Name of the Glue Database containing the table |
 | `glueKey` | string | Yes | Unique identifier for the Glue table (used to construct table name) |
 
-## Environment Variables
+### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ACCOUNT_ID` | AWS Account ID | Set by Amplify backend |
 
-## Response
+## Output
 
 ### Success Response (200)
 

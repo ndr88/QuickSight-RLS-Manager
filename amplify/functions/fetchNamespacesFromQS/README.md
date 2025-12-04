@@ -1,17 +1,19 @@
 # fetchNamespacesFromQS
 
-Lambda function that retrieves a list of QuickSight namespaces from the Management Region.
+**Data Fetching Function** - Retrieves a list of QuickSight namespaces from the Management Region.
 
 ## Overview
 
-This function calls the QuickSight `ListNamespaces` API to fetch all namespaces in the account. It supports pagination and returns a simplified list containing ARN, name, and capacity region for each namespace.
+This function calls the QuickSight `ListNamespaces` API to fetch all namespaces in the account. It supports pagination and returns a simplified list containing ARN, name, and capacity region for each namespace. This is used for namespace selection and configuration.
 
 ## Function Details
 
 - **Name**: `fetchNamespacesFromQS`
 - **Runtime**: Node.js (AWS Lambda)
 - **Timeout**: 120 seconds
-- **Handler**: `handler.ts`
+- **Handler**: [`handler.ts`](./handler.ts)
+- **Resources**: [`resources.ts`](./resources.ts)
+- **Schema Definition**: [`amplify/data/resource.ts`](../../data/resource.ts)
 
 ## Input Parameters
 

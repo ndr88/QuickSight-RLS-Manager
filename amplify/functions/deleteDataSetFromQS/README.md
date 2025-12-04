@@ -1,17 +1,19 @@
 # deleteDataSetFromQS
 
-Lambda function that deletes a QuickSight DataSet from a specified region.
+**Data Deletion Function** - Deletes a QuickSight DataSet from a specified region.
 
 ## Overview
 
-This function calls the QuickSight `DeleteDataSet` API to remove a DataSet. It includes comprehensive error handling for various QuickSight-specific exceptions and treats "ResourceNotFoundException" as a success case (idempotent deletion).
+This function calls the QuickSight `DeleteDataSet` API to remove a DataSet. It includes comprehensive error handling for various QuickSight-specific exceptions and treats "ResourceNotFoundException" as a success case (idempotent deletion). This is used to clean up RLS DataSets and other QuickSight DataSets.
 
 ## Function Details
 
 - **Name**: `deleteDataSetFromQS`
 - **Runtime**: Node.js (AWS Lambda)
 - **Timeout**: 120 seconds
-- **Handler**: `handler.ts`
+- **Handler**: [`handler.ts`](./handler.ts)
+- **Resources**: [`resources.ts`](./resources.ts)
+- **Schema Definition**: [`amplify/data/resource.ts`](../../data/resource.ts)
 
 ## Input Parameters
 
@@ -20,13 +22,13 @@ This function calls the QuickSight `DeleteDataSet` API to remove a DataSet. It i
 | `region` | string | Yes | AWS region where the DataSet is located |
 | `dataSetId` | string | Yes | Unique identifier of the QuickSight DataSet to delete |
 
-## Environment Variables
+### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ACCOUNT_ID` | AWS Account ID | Set by Amplify backend |
 
-## Response
+## Output
 
 ### Success Response (200)
 

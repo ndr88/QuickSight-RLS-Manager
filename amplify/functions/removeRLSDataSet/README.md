@@ -1,17 +1,19 @@
 # removeRLSDataSet
 
-Lambda function that removes Row-Level Security (RLS) configuration from a QuickSight DataSet.
+**Utility Function** - Removes Row-Level Security (RLS) configuration from a QuickSight DataSet.
 
 ## Overview
 
-This function retrieves a QuickSight DataSet's configuration and updates it to remove the RLS DataSet association while preserving all other settings. It's used to disable RLS on a DataSet without affecting its other properties.
+This function retrieves a QuickSight DataSet's configuration and updates it to remove the RLS DataSet association while preserving all other settings. It's used to disable RLS on a DataSet without affecting its other properties. This is the reverse operation of applying RLS.
 
 ## Function Details
 
 - **Name**: `removeRLSDataSet`
 - **Runtime**: Node.js (AWS Lambda)
 - **Timeout**: 120 seconds
-- **Handler**: `handler.ts`
+- **Handler**: [`handler.ts`](./handler.ts)
+- **Resources**: [`resources.ts`](./resources.ts)
+- **Schema Definition**: [`amplify/data/resource.ts`](../../data/resource.ts)
 
 ## Input Parameters
 

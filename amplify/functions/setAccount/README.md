@@ -1,6 +1,6 @@
 # setAccount
 
-Lambda function that initializes or updates the account configuration in the RLS Manager database.
+**Utility Function** - Initializes or updates the account configuration in the RLS Manager database.
 
 ## Overview
 
@@ -11,7 +11,9 @@ This function stores the QuickSight Management Region and resource counts in the
 - **Name**: `setAccount`
 - **Runtime**: Node.js (AWS Lambda)
 - **Timeout**: 120 seconds
-- **Handler**: `handler.ts`
+- **Handler**: [`handler.ts`](./handler.ts)
+- **Resources**: [`resources.ts`](./resources.ts)
+- **Schema Definition**: [`amplify/data/resource.ts`](../../data/resource.ts)
 
 ## Input Parameters
 

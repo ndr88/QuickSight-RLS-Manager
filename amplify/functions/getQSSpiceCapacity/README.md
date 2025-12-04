@@ -1,17 +1,19 @@
 # getQSSpiceCapacity
 
-Lambda function that retrieves QuickSight SPICE capacity metrics from CloudWatch for a specific region.
+**Utility Function** - Retrieves QuickSight SPICE capacity metrics from CloudWatch for a specific region.
 
 ## Overview
 
-This function queries CloudWatch metrics to get the total SPICE capacity limit and current usage for QuickSight in a specified region. SPICE (Super-fast, Parallel, In-memory Calculation Engine) is QuickSight's in-memory data store.
+This function queries CloudWatch metrics to get the total SPICE capacity limit and current usage for QuickSight in a specified region. SPICE (Super-fast, Parallel, In-memory Calculation Engine) is QuickSight's in-memory data store. This is used to monitor capacity and prevent ingestion failures.
 
 ## Function Details
 
 - **Name**: `getQSSpiceCapacity`
 - **Runtime**: Node.js (AWS Lambda)
 - **Timeout**: 120 seconds
-- **Handler**: `handler.ts`
+- **Handler**: [`handler.ts`](./handler.ts)
+- **Resources**: [`resources.ts`](./resources.ts)
+- **Schema Definition**: [`amplify/data/resource.ts`](../../data/resource.ts)
 
 ## Input Parameters
 
