@@ -56,6 +56,7 @@ First, create your own copy of the RLS Manager repository.
 
 2. **Fork the Repository**
    - Click the **Fork** button (top-right corner)
+   - Select copy only master branch
    - Select your GitHub account as the destination
    - Wait for the fork to complete
 
@@ -69,72 +70,78 @@ First, create your own copy of the RLS Manager repository.
 
 Deploy the RLS Manager to your AWS account using AWS Amplify.
 
-### Important: Region Selection
-
-Deploy the Amplify app in the **same AWS region** as your QuickSight Management Region:
-- This is where you first created your QuickSight account
-- Typically `us-east-1` or your organization's primary region
-- Must match the region where QuickSight users/groups are managed
-
 ### Deployment Instructions
+
+**Note**: You can deploy the Amplify app in any AWS region. The QuickSight Management Region will be configured later during the [Initialization](Initialization.md) phase.
 
 #### 1. Open AWS Amplify
 
 - Sign in to the **AWS Console**
 - Navigate to **AWS Amplify** service
-- Ensure you're in the correct region (QuickSight Management Region)
 
 #### 2. Create New App
 
-- Click **Create new app** or **Get started**
-- Select **Host web app**
+- Click **Deploy an App**
 
-![Open Amplify](/Guide/images/Guide-Install-01.png)
+![Deploy App in Amplify](/Guide/images/Install/Guide-Install-01.png)
 
 #### 3. Connect to GitHub
 
-- Select **GitHub** as the repository service
-- Click **Continue**
-- **Authorize AWS Amplify** to access your GitHub account
-  - Click **Authorize aws-amplify-console**
-  - You may need to enter your GitHub password
+- Select **GitHub** as the *Git provider*
+- Click **Next**
 
-![Open Amplify](/Guide/images/Guide-Install-02.png)
+![Select Git Provider](/Guide/images/Install/Guide-Install-02.png)
+
+**If your GitHub is not already connected to AWS Account, proceed with these steps. Otherwise you can jump to [Select Repository and Branch](#4-select-repository-and-branch)**
+
+- Add your **GitHub Credentials** 
+
+![LogIn GitHub](/Guide/images/Install/Guide-Install-03.png)
+
+- **Authorize AWS Amplify** to access your GitHub account
+  - Click **Authorize AWS Amplify**
+
+![Authorize GitHub - Step1](/Guide/images/Install/Guide-Install-04.png)
+
+- If it's the first time connecting **GitHub** to **AWS Account**, you can directly decide if you want to authorize All Repositories, or just the ones you need.
+
+![Authorize GitHub - Step2](/Guide/images/Install/Guide-Install-05.png)
+
 
 #### 4. Select Repository and Branch
 
-- **Repository**: Select `QuickSight-RLS-Manager` (your fork)
-- **Branch**: Select `main` or `master`
+- **Repository**: Select `[YOUR-USERNAME]/QuickSight-RLS-Manager` (your fork)
+- **Branch**: `master`
 - Click **Next**
 
-**Note**: If you don't see your repository:
-- Refresh the page
-- Verify you authorized the correct GitHub account
-- Check that the fork completed successfully
+**Note**: If you don't see your repository, you can click on **Update GitHub permissions**
 
-![Open Amplify](/Guide/images/Guide-Install-03.png)
+![Select Repo and Branch](/Guide/images/Install/Guide-Install-06.png)
 
 #### 5. Configure Build Settings
 
-- **App name**: Leave as default or customize
-- **Environment**: Leave as default (`main`)
-- **Build and test settings**: Leave as auto-detected
+- **App name**: Leave as default
+- **Build settings**: Leave as auto-detected
 
-**Optional Security Enhancement**:
-- Enable **Password protection** for an additional security layer
+![App Settings](/Guide/images/Install/Guide-Install-07.png)
+
+**(Optional) Security Enhancement**:
+- Enable **Password protect my site** for an additional security layer
 - Useful for restricting access during initial setup
-- Can be disabled later after configuring Cognito users
+- Can be disabled later
 
-![Open Amplify](/Guide/images/Guide-Install-04.png)
-![Open Amplify](/Guide/images/Guide-Install-05.png)
+![Password Protect](/Guide/images/Install/Guide-Install-08.png)
 
 #### 6. Review and Deploy
 
 - Review all settings
 - Click **Save and deploy**
 
-![Open Amplify](/Guide/images/Guide-Install-06.png)
-![Open Amplify](/Guide/images/Guide-Install-07.png)
+![Save and Deploy](/Guide/images/Install/Guide-Install-09.png)
+
+**Now we just wait for the app to be deployed!**
+
+![Launch in progress](/Guide/images/Install/Guide-Install-10.png)
 
 ### Deployment Process
 
