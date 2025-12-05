@@ -49,8 +49,14 @@ export const handler: Schema["fetchDataSetFieldsFromQS"]["functionHandler"] = as
       
       // Check if this is a direct file upload (not API manageable)
       // Direct uploads do NOT have a DataSourceArn in PhysicalTableMap
-      // DataSource-based datasets have RelationalTable with DataSourceArn
+      // DataSource-based datasets have DataSourceArn in one of four possible locations:
+      // 1. RelationalTable (Athena, Redshift, RDS, etc.)
+      // 2. S3Source (S3 Manifest files)
+      // 3. CustomSql (Custom SQL queries)
+      // 4. SaaSTable (SaaS connectors)
       let isApiManageable = false; // Default to false
+      let foundDataSourceArn: string | undefined;
+      let foundSourceType: string | undefined;
       const dataSet = response.DataSet;
       
       if (dataSet && dataSet.PhysicalTableMap) {
@@ -62,29 +68,75 @@ export const handler: Schema["fetchDataSetFieldsFromQS"]["functionHandler"] = as
           physicalTableMapStructure: JSON.stringify(dataSet.PhysicalTableMap)
         });
         
-        // Check if any physical table has a DataSourceArn
+        // Check if any physical table has a DataSourceArn in any of the four possible locations
         for (const key of physicalTableKeys) {
           const table = dataSet.PhysicalTableMap[key];
           
-          logger.debug('Checking physical table', {
-            key,
-            hasTable: !!table,
-            hasRelationalTable: !!(table && table.RelationalTable),
-            hasDataSourceArn: !!(table && table.RelationalTable && table.RelationalTable.DataSourceArn)
-          });
+          if (!table) continue;
           
-          if (table && table.RelationalTable && table.RelationalTable.DataSourceArn) {
+          // Check 1: RelationalTable (Athena, Redshift, RDS, etc.)
+          if (table.RelationalTable?.DataSourceArn) {
             isApiManageable = true;
-            logger.info('DataSourceArn found - dataset is API manageable', {
+            foundDataSourceArn = table.RelationalTable.DataSourceArn;
+            foundSourceType = 'RelationalTable';
+            logger.info('DataSourceArn found in RelationalTable - dataset is API manageable', {
               dataSetId,
-              dataSourceArn: table.RelationalTable.DataSourceArn
+              dataSourceArn: foundDataSourceArn,
+              sourceType: foundSourceType
             });
             break;
           }
+          
+          // Check 2: S3Source (S3 Manifest files)
+          if (table.S3Source?.DataSourceArn) {
+            isApiManageable = true;
+            foundDataSourceArn = table.S3Source.DataSourceArn;
+            foundSourceType = 'S3Source';
+            logger.info('DataSourceArn found in S3Source - dataset is API manageable', {
+              dataSetId,
+              dataSourceArn: foundDataSourceArn,
+              sourceType: foundSourceType
+            });
+            break;
+          }
+          
+          // Check 3: CustomSql (Custom SQL queries)
+          if (table.CustomSql?.DataSourceArn) {
+            isApiManageable = true;
+            foundDataSourceArn = table.CustomSql.DataSourceArn;
+            foundSourceType = 'CustomSql';
+            logger.info('DataSourceArn found in CustomSql - dataset is API manageable', {
+              dataSetId,
+              dataSourceArn: foundDataSourceArn,
+              sourceType: foundSourceType
+            });
+            break;
+          }
+          
+          // Check 4: SaaSTable (SaaS connectors)
+          if (table.SaaSTable?.DataSourceArn) {
+            isApiManageable = true;
+            foundDataSourceArn = table.SaaSTable.DataSourceArn;
+            foundSourceType = 'SaaSTable';
+            logger.info('DataSourceArn found in SaaSTable - dataset is API manageable', {
+              dataSetId,
+              dataSourceArn: foundDataSourceArn,
+              sourceType: foundSourceType
+            });
+            break;
+          }
+          
+          logger.debug('No DataSourceArn found in physical table', {
+            key,
+            hasRelationalTable: !!table.RelationalTable,
+            hasS3Source: !!table.S3Source,
+            hasCustomSql: !!table.CustomSql,
+            hasSaaSTable: !!table.SaaSTable
+          });
         }
         
         if (!isApiManageable) {
-          // No DataSourceArn found = direct file upload
+          // No DataSourceArn found in any location = direct file upload
           logger.warn('Dataset has no DataSourceArn - direct file upload detected', {
             dataSetId,
             limitation: 'API updates not supported for direct file uploads'
