@@ -50,7 +50,7 @@ function DatasetListPage() {
   });
 
   // Pagination
-  const [pageTokens, setPageTokens] = useState<(string | null)[]>([null]);
+  const [_pageTokens, setPageTokens] = useState<(string | null)[]>([null]);
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
 
   const [statusIndicator, setStatusIndicator] = useState<{status: string, message: string}>({status: "success", message: "ok"})
